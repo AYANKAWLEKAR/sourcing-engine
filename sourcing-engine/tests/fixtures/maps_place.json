@@ -1,0 +1,99 @@
+{
+  "title": "Energy Evolution",
+  "subTitle": null,
+  "description": null,
+  "price": null,
+  "categoryName": "HVAC contractor",
+  "address": null,
+  "neighborhood": null,
+  "street": null,
+  "city": null,
+  "postalCode": null,
+  "state": null,
+  "countryCode": null,
+  "website": "http://www.energy-evolution.com.au/",
+  "phone": "+61 408 810 067",
+  "phoneUnformatted": "+61408810067",
+  "claimThisBusiness": false,
+  "location": {
+    "lat": -27.3821429,
+    "lng": 153.0041033
+  },
+  "locatedIn": null,
+  "floor": null,
+  "plusCode": null,
+  "menu": null,
+  "servicesLink": null,
+  "totalScore": 5,
+  "permanentlyClosed": false,
+  "temporarilyClosed": false,
+  "placeId": "ChIJGb_MMMpfkWsR-zIdhr9rMWo",
+  "categories": [
+    "HVAC contractor",
+    "Air conditioning contractor",
+    "Air conditioning repair service",
+    "Air conditioning store",
+    "Air conditioning system supplier",
+    "Electrical installation service",
+    "Service establishment",
+    "Electrician"
+  ],
+  "fid": "0x6b915fca30ccbf19:0x6a316bbf861d32fb",
+  "cid": "7652015712212169467",
+  "reviewsCount": 10,
+  "imagesCount": 62,
+  "imageCategories": [],
+  "scrapedAt": "2026-06-28T21:08:48.426Z",
+  "reserveTableUrl": null,
+  "googleFoodUrl": null,
+  "hotelStars": null,
+  "hotelDescription": null,
+  "checkInDate": null,
+  "checkOutDate": null,
+  "hotelAds": [],
+  "popularTimesLiveText": null,
+  "popularTimesLivePercent": null,
+  "popularTimesHistogram": {},
+  "openingHours": [
+    {
+      "day": "Monday",
+      "hours": "Open 24 hours"
+    },
+    {
+      "day": "Tuesday",
+      "hours": "Open 24 hours"
+    },
+    {
+      "day": "Wednesday",
+      "hours": "Open 24 hours"
+    },
+    {
+      "day": "Thursday",
+      "hours": "Open 24 hours"
+    },
+    {
+      "day": "Friday",
+      "hours": "Open 24 hours"
+    },
+    {
+      "day": "Saturday",
+      "hours": "Open 24 hours"
+    },
+    {
+      "day": "Sunday",
+      "hours": "Open 24 hours"
+    }
+  ],
+  "peopleAlsoSearch": [],
+  "placesTags": [],
+  "reviewsTags": [],
+  "gasPrices": [],
+  "url": "https://www.google.com/maps/search/?api=1&query=Energy%20Evolution&query_place_id=ChIJGb_MMMpfkWsR-zIdhr9rMWo",
+  "searchPageUrl": "https://www.google.com/maps/search/HVAC%20installer/@-27.428442,153.22863947364684,17z?hl=en",
+  "searchString": "HVAC installer",
+  "language": "en",
+  "rank": 8,
+  "isAdvertisement": false,
+  "imageUrl": "https://lh3.googleusercontent.com/gps-cs-s/APNQkAEqhAgXqtWoJzwMaLUzt8pVDCxS7Y8SfmfUHfXGajkk1QtdmuG_mF3p-1DeN-WlfpNfPDxPovfbQlCsaB-E_Q6LOKjH7hAjPuqmezGyQCQPhm_JQs-pijeHdkQ31jKFlOEwyTww=w408-h408-k-no",
+  "kgmid": "/g/11gwgyj119"
+}

@@ -1,0 +1,39 @@
+field,group,data_type,filter_type,screen_tier,logic,sources,scrapeable,proxyable,notes
+ebitda_aud,financial,currency_aud,range,HARD,"MIN: 1,000,000 | MAX: 15,000,000 | SWEET_SPOT: 1,500,000 - 10,000,000",ibisworld;manual,false,true,Use SDE-adjusted EBITDA if owner add-backs disclosed; flag if add-backs >30%.
+revenue_aud,financial,currency_aud,range,HARD,"MIN: 3,000,000 | MAX: 100,000,000",web;directory;proxy,false,true,Proxy from employees x revenue/employee.
+ebitda_margin_pct,financial,float_pct,threshold,HARD,MIN: 15,calculated,false,true,Calculated proxy margin.
+gross_margin_pct,financial,float_pct,threshold,DISQUALIFIER,MIN: 30,im,false,false,IM-only.
+net_profit_margin_pct,financial,float_pct,threshold,DISQUALIFIER,MIN: 10,im,false,false,IM-only.
+recurring_revenue_pct,financial,float_pct,threshold,SOFT,MIN: 40,im,false,false,Thesis target.
+revenue_trend,financial,enum,match,SOFT,"VALUES: growing, flat",manual,false,false,Thesis target.
+owner_addbacks_pct,financial,float_pct,threshold,HARD,MAX: 30,im,false,false,Pass/fail at IM.
+country,geography,string,match,HARD,VALUES: Australia,asic;abn,true,false,Spine field.
+state,geography,enum,match,SOFT,"VALUES: NSW, VIC, QLD, SA, WA",asic;abn,true,false,State preference.
+ownership_structure,ownership,enum,match,HARD,"VALUES: founder-owned, family-owned, private",crunchbase;asic,true,false,Shortlist confirm for institutional.
+years_operating,age,int,threshold,HARD,MIN: 5,abn,true,false,From ABN registration date.
+employee_count,size,int,range,HARD,MIN: 6 | MAX: 300,linkedin;web,true,false,Proxy via directory/LinkedIn.
+business_model,sector,enum,match,SOFT,VALUES: B2B,web,true,false,B2B preferred.
+pe_vc_backed,ownership,bool,boolean,DISQUALIFIER,EQUALS: false,crunchbase;asic,true,false,Exclude PE/VC-backed.
+listed_entity,ownership,bool,boolean,DISQUALIFIER,EQUALS: false,asx;asic,true,false,Exclude listed.
+top_customer_revenue_pct,financial,float_pct,threshold,DISQUALIFIER,MAX: 15,im,false,false,<=50% disqualifier at IM.
+top5_customer_revenue_pct,financial,float_pct,threshold,DISQUALIFIER,MAX: 40,im,false,false,<=70% disqualifier at IM.
+revenue_quality_score,financial,enum,threshold,SOFT,MIN: 5,im,false,false,Contractual=10..transactional=2.
+bad_debts_material,financial,bool,boolean,DISQUALIFIER,EQUALS: false,im,false,false,Exclude at IM.
+working_capital_abnormal,financial,bool,boolean,DISQUALIFIER,EQUALS: false,manual,false,false,Exclude at IM.
+anzsic_code,sector,string_list,whitelist,SOFT,"VALUES: 6925, 6910",asic;abn,true,false,Derived from name/website; agent resolves.
+sector_keyword_match,sector,string,keyword,SOFT,"INCLUDE: testing, inspection, certification, compliance, calibration, accreditation | EXCLUDE: retail, hospitality",web;directory,true,false,Include/exclude keyword sets.
+sector_exclude_match,sector,string,keyword,DISQUALIFIER,"INCLUDE: retail, hospitality, food, accommodation, real estate, property, mining, construction, childcare, aged care",web,true,false,Flag-first before disqualify.
+ai_disruption_risk,moat,enum,match,SOFT,"VALUES: low, medium",web;manual,true,false,Graded from moat signals.
+entry_ev_ebitda_multiple,deal,float,threshold,SOFT,MAX: 6,im,false,false,Thesis target.
+transaction_type,deal,enum,match,SOFT,"VALUES: full, majority",manual,false,false,Thesis target.
+vendor_rollover,deal,bool,boolean,SOFT,EQUALS: true,manual,false,false,Thesis target.
+target_hold_years,deal,int,threshold,SOFT,MIN: 3,internal,false,false,Thesis target.
+platform_or_bolton,deal,enum,match,SOFT,"VALUES: platform, bolton",internal,false,false,Thesis target.
+seller_motivation,manual,enum,match,SOFT,"VALUES: GREEN, YELLOW",im,false,false,GREEN/YELLOW/RED.
+owner_dependence_level,manual,enum,match,MANUAL,"VALUES: low, medium",im;call,false,false,IM/call.
+management_depth,manual,enum,match,SOFT,"VALUES: medium, high",im,false,false,Thesis target.
+turnaround_situation,manual,bool,boolean,DISQUALIFIER,EQUALS: false,manual,false,false,Exclude at IM.
+identifiable_exit_buyers,manual,bool,boolean,DISQUALIFIER,EQUALS: true,manual,false,false,>=3 buyers; excl if none.
+market_fragmentation,sector,enum,match,SOFT,"VALUES: highly_fragmented, fragmented",cabee;ibisworld,true,false,From CABEE counts.
+leverage_supportable,deal,bool,boolean,SOFT,EQUALS: true,manual,false,false,Thesis target.
+professional_licence_required,ownership,bool,boolean,HARD,EQUALS: false,manual,false,false,DELETE THIS.

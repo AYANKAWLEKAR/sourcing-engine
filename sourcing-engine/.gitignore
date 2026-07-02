@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets / local config
+.env
+
+# Bulk data caches — regenerable via `python cli.py asic-load` (do not commit)
+data/bulk.duckdb
+*.duckdb

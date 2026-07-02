@@ -1,0 +1,292 @@
+# Source Registry seed (plan §7.2). Config/metadata only — no company data.
+# `fields_provided` uses the ruleset's discovery-field vocabulary so field-coverage
+# routing is a clean set operation. `capability_doc` is the natural-language text
+# embedded for vector retrieval.
+
+sources:
+  - source_id: abn_bulk_extract
+    connector_type: bulk
+    fields_provided: [country, state, years_operating, anzsic_code]
+    sectors_covered: [all]
+    geo_granularity: postcode
+    join_key: abn
+    cost_tier: free
+    freshness: weekly
+    reliability: structured_high
+    enabled: true
+    connector_ref: connectors.abn.BulkABNConnector
+    capability_doc: >
+      Australian Business Register bulk extract. Identifies every registered
+      Australian business with its ABN, legal and trading names, entity type,
+      registration date (business age and years operating), and location down to
+      state and postcode across NSW VIC QLD SA WA TAS NT ACT. The structured spine
+      for reach across all sectors and for hard geographic and age filters.
+
+  - source_id: abn_lookup_api
+    connector_type: api
+    # The live API returns entity name, type, status, state, postcode, and
+    # registration date. ANZSIC codes are NOT returned by the API — they come
+    # from the bulk XML extract (abn_bulk_extract) which includes ANZSIC.
+    fields_provided: [country, state, years_operating, ownership_structure]
+    sectors_covered: [all]
+    geo_granularity: postcode
+    join_key: abn
+    cost_tier: free
+    freshness: daily
+    reliability: structured_high
+    enabled: true
+    connector_built: true
+    connector_ref: sourcing.connectors.abn.lookup.ABNLookupAPIConnector
+    capability_doc: >
+      ABN Lookup API (abr.business.gov.au). Real-time REST API for the Australian
+      Business Register. Supports search by postcode to discover all active
+      businesses in a location, lookup by ABN for full entity detail, and name
+      search filtered by state. Returns ABN, legal name, trading names, entity
+      type (private company, public company, sole trader, trust, partnership),
+      business registration date (years operating), state, postcode, and entity
+      status. The live spine source for geographic and age hard-gate filters
+      across all sectors in Australia.
+
+  - source_id: asic_company_dataset
+    connector_type: bulk
+    fields_provided: [country, state, years_operating, listed_entity, ownership_structure]
+    sectors_covered: [all]
+    geo_granularity: state
+    join_key: acn
+    cost_tier: free
+    freshness: weekly
+    reliability: structured_high
+    enabled: true
+    connector_built: true
+    connector_ref: sourcing.connectors.asic_bulk.ASICBulkConnector
+    capability_doc: >
+      ASIC company register dataset. Provides ACN, company status, registration
+      and deregistration dates, company type and whether an entity is listed.
+      Structured government spine source for company age, status and listed-entity
+      checks across all sectors in Australia.
+
+  - source_id: asx_listed_list
+    connector_type: api
+    fields_provided: [listed_entity]
+    sectors_covered: [all]
+    geo_granularity: national
+    join_key: acn
+    cost_tier: free
+    freshness: daily
+    reliability: structured_high
+    enabled: true
+    connector_ref: connectors.asx.ASXListedConnector
+    capability_doc: >
+      ASX listed companies list. The daily roster of publicly listed Australian
+      companies by name and ACN, used to detect and exclude listed entities.
+
+  - source_id: crunchbase
+    connector_type: api
+    fields_provided: [pe_vc_backed, ownership_structure]
+    sectors_covered: [all]
+    geo_granularity: national
+    join_key: name
+    cost_tier: paid
+    freshness: monthly
+    reliability: structured_medium
+    enabled: true
+    connector_ref: connectors.crunchbase.CrunchbaseConnector
+    capability_doc: >
+      Crunchbase / Dealroom investor and funding database. Reveals whether a
+      company is private-equity or venture-capital backed and identifies investors
+      and institutional ownership, used to exclude PE/VC-backed targets.
+
+  - source_id: google_maps
+    connector_type: scrape
+    fields_provided: [sector_keyword_match, business_model, state]
+    sectors_covered: [services, industrial, professional]
+    geo_granularity: postcode
+    join_key: name
+    cost_tier: metered
+    freshness: daily
+    reliability: text_medium
+    enabled: true
+    connector_built: true
+    actor_id: compass/crawler-google-places
+    connector_ref: sourcing.connectors.google_maps.GoogleMapsConnector
+    capability_doc: >
+      Google Maps and Places. Category-bearing text source: business category,
+      services description, website, reviews and location by postcode tile. Reveals
+      sector keywords such as testing, inspection, certification, calibration and
+      compliance services, plus business-model signals, for B2B service firms.
+
+  - source_id: yellow_pages
+    connector_type: scrape
+    fields_provided: [sector_keyword_match, business_model]
+    sectors_covered: [services, industrial, professional]
+    geo_granularity: postcode
+    join_key: name
+    cost_tier: metered
+    freshness: weekly
+    reliability: text_medium
+    enabled: true
+    connector_built: true
+    actor_id: abotapi/yellow-pages-au-scraper
+    connector_ref: sourcing.connectors.yellow_pages.YellowPagesConnector
+    capability_doc: >
+      Yellow Pages business directory. Category-bearing text source listing
+      businesses by service category and contact details, surfacing sector
+      keywords for testing, inspection, certification and trade services.
+
+  - source_id: industrynet
+    connector_type: scrape
+    fields_provided: [sector_keyword_match, business_model, anzsic_code]
+    sectors_covered: [industrial, manufacturing, services]
+    geo_granularity: state
+    join_key: name
+    cost_tier: metered
+    freshness: monthly
+    reliability: text_medium
+    enabled: true
+    connector_ref: connectors.directory.IndustryNetConnector
+    capability_doc: >
+      IndustryNet industrial directory. Category-bearing source covering industrial,
+      manufacturing and B2B service firms, with sector category text useful for
+      inspection, certification and engineering-services keyword matching.
+
+  - source_id: website_fetch
+    connector_type: scrape
+    fields_provided: [sector_keyword_match, sector_exclude_match, business_model, ai_disruption_risk]
+    sectors_covered: [all]
+    geo_granularity: none
+    join_key: website
+    cost_tier: free
+    freshness: on_demand
+    reliability: text_medium
+    enabled: true
+    connector_built: true
+    actor_id: apify/rag-web-browser
+    connector_ref: sourcing.connectors.website.WebsiteFetchConnector
+    capability_doc: >
+      Website text fetch. Retrieves homepage and about/services pages and extracts
+      text for sector keyword hits and exclude hits, business-model inference
+      (B2B versus B2C) and moat signals such as accreditation, physical operations
+      and regulatory compliance for AI-disruption resilience.
+
+  - source_id: ipgod
+    connector_type: bulk
+    fields_provided: [ai_disruption_risk]
+    sectors_covered: [all]
+    geo_granularity: national
+    join_key: abn
+    cost_tier: free
+    freshness: annual
+    reliability: structured_medium
+    enabled: true
+    connector_ref: connectors.ipgod.IPGODConnector
+    capability_doc: >
+      IP Government Open Data (IPGOD). Patents, trademarks and designs by applicant
+      ABN, used as an intellectual-property moat signal for AI-disruption resilience.
+
+  - source_id: austender
+    connector_type: api
+    fields_provided:
+      - moat_signals.gov_contracts
+      - moat_signals.gov_contract_value_aud
+      - moat_signals.gov_contract_count
+      - moat_signals.gov_contract_agencies
+    sectors_covered: [all]
+    geo_granularity: national
+    join_key: abn
+    cost_tier: free
+    freshness: weekly
+    reliability: structured_high
+    enabled: true
+    gate: full_pool
+    connector_built: true
+    connector_ref: sourcing.connectors.austender.AusTenderConnector
+    capability_doc: >
+      AusTender government contracts (OCDS). Supplier ABN, contract value and
+      UNSPSC categories, used to detect recurring government revenue and contract
+      moats for AI-disruption resilience.
+
+  - source_id: abs_cabee
+    connector_type: bulk
+    fields_provided: [market_fragmentation]
+    sectors_covered: [all]
+    geo_granularity: state
+    join_key: anzsic
+    cost_tier: free
+    freshness: annual
+    reliability: structured_high
+    enabled: true
+    connector_ref: connectors.abs.CABEEConnector
+    capability_doc: >
+      ABS Counts of Australian Businesses (CABEE). Business counts by ANZSIC class,
+      region and turnover band, used to measure market fragmentation for a sector.
+
+  - source_id: ibisworld
+    connector_type: api
+    fields_provided: [ebitda_aud, revenue_aud, ebitda_margin_pct, market_fragmentation]
+    sectors_covered: [all]
+    geo_granularity: national
+    join_key: anzsic
+    cost_tier: paid
+    freshness: quarterly
+    reliability: structured_high
+    enabled: true
+    connector_ref: connectors.ibisworld.IBISWorldConnector
+    capability_doc: >
+      IBISWorld industry reports. ANZSIC-level revenue and EBITDA margin benchmarks
+      and industry fragmentation, used as financial proxies to estimate revenue and
+      EBITDA for PROXY_GATE financial flags.
+
+  - source_id: retail_pos_directory
+    connector_type: scrape
+    fields_provided: [business_model, state]
+    sectors_covered: [retail, hospitality, food, accommodation]
+    geo_granularity: postcode
+    join_key: name
+    cost_tier: metered
+    freshness: weekly
+    reliability: text_low
+    enabled: true
+    connector_ref: connectors.directory.RetailPOSConnector
+    capability_doc: >
+      Retail and hospitality point-of-sale directory. Lists shops, cafes,
+      restaurants, hotels and consumer storefronts. Covers retail, hospitality,
+      food and accommodation businesses only.
+
+  - source_id: linkedin_headcount
+    connector_type: scrape
+    fields_provided: [employee_count]
+    sectors_covered: [all]
+    geo_granularity: national
+    join_key: name
+    cost_tier: metered
+    freshness: on_demand
+    reliability: text_low
+    enabled: false
+    gate: shortlist_only
+    rate_limit: tos_gated
+    connector_built: true
+    actor_id: apt_marble/linkedin-company-employees-scraper
+    connector_ref: sourcing.connectors.linkedin.LinkedInHeadcountConnector
+    capability_doc: >
+      LinkedIn company headcount. Employee counts scraped from company profiles.
+      Disabled by default: Terms-of-Service gated and Legal kill-switched.
+
+  - source_id: telstra_awards
+    connector_type: agent
+    fields_provided: [moat_signals.award_finalist]
+    sectors_covered: [all]
+    geo_granularity: state
+    join_key: name
+    cost_tier: metered
+    freshness: annual
+    reliability: text_medium
+    enabled: true
+    gate: full_pool
+    connector_built: true
+    actor_id: apify/rag-web-browser
+    connector_ref: sourcing.connectors.awards.TelstraAwardsConnector
+    capability_doc: >
+      Telstra Best of Business Awards finalist register. A curated discovery source of
+      award-finalist Australian SMBs by state, with an LLM-classified business category
+      and a tier-1 award-finalist quality signal. Finalists are pre-vetted quality
+      businesses used as an off-market discovery entry point.

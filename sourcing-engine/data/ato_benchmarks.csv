@@ -1,0 +1,11 @@
+anzsic_prefix,label,rev_per_employee_aud,ebitda_margin
+30,Construction services,230000,0.11
+32,Building installation (HVAC/electrical/plumbing),210000,0.12
+69,Professional scientific technical services,225000,0.18
+72,Administrative support services,180000,0.10
+24,Machinery equipment manufacturing,300000,0.10
+25,Fabricated metal manufacturing,280000,0.11
+42,Wholesale trade,420000,0.06
+47,Retail trade,350000,0.05
+78,Repair maintenance services,190000,0.12
+DEFAULT,Fallback all-sector benchmark,200000,0.12
