@@ -10,6 +10,7 @@ sometimes-null formatted ``address`` we fall back to parsing).
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -52,7 +53,12 @@ class GoogleMapsConnector(ScrapeConnector):
             Size,
         )
 
-        place_id = raw.get("placeId") or raw.get("cid") or raw.get("fid") or raw.get("title", "")
+        place_id = raw.get("placeId") or raw.get("cid") or raw.get("fid")
+        if not place_id:
+            # Fix 14: fall back to a content-hash rather than the bare title so two
+            # businesses with identical names don't collide on the same entity_id.
+            stable_key = f"{raw.get('title', '')}-{raw.get('postalCode', '')}-{raw.get('state', '')}"
+            place_id = "hash:" + hashlib.sha1(stable_key.encode()).hexdigest()[:12]
         entity_id = f"maps:{place_id}"
 
         # Category text: primary category first, then the full list (deduped).

@@ -21,6 +21,10 @@ class RankedCompany(BaseModel):
     judge_rationale: str = ""
     standout_signals: list[str] = Field(default_factory=list)
     deferred_assessment: list[str] = Field(default_factory=list)
+    # Fix 11: True when the LLM judge returned unparseable output.  The s_final
+    # blend still runs (fit defaults to 0.0) but analysts should treat the judge
+    # column as unverified and not rely on the rationale string.
+    judge_unavailable: bool = False
 
     @property
     def rank_score(self) -> float:

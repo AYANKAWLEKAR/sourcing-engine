@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Repo root = two levels up from this file (src/sourcing/config.py -> repo root).
@@ -44,6 +45,16 @@ class Settings(BaseSettings):
     # Bulk-source files. Production resolves these via CKAN (data.gov.au); for
     # local dev/test, point at a downloaded copy.
     asic_csv_path: str = ""
+
+    @model_validator(mode="after")
+    def _resolve_relative_paths(self) -> Settings:
+        if self.asic_csv_path and not Path(self.asic_csv_path).is_absolute():
+            self.asic_csv_path = str(REPO_ROOT / self.asic_csv_path)
+        return self
+
+    # AusTender enrichment window (Fix 12: raised to 2 years; 180 days missed
+    # suppliers with contracts older than 6 months).
+    austender_window_days: int = 730
 
     # Apify (scrape connectors: Google Maps, Yellow Pages, Website, LinkedIn)
     apify_api_token: str = ""

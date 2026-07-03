@@ -42,6 +42,9 @@ Return ONLY this JSON shape (fill in real values):
                     "hard_assets": false, "recurring_revenue_hint": false}},
   "anzsic_guess": "4-digit code or null", "anzsic_confidence": 0.0}}"""
 
+# Fix 8: raised from 4000 to cover a full homepage + services page (~1200 words).
+_MAX_TEXT_CHARS = 8000
+
 _VALID_MODELS = {"B2B", "B2C", "MIXED", "UNKNOWN"}
 
 
@@ -65,7 +68,7 @@ class SignalExtractor:
             _PROMPT.format(
                 include=", ".join(buybox.sector_keywords) or "(none)",
                 exclude=", ".join(buybox.sector_exclude_keywords) or "(none)",
-                text=text[:4000],
+                text=text[:_MAX_TEXT_CHARS],
             ),
         )
         if not data:

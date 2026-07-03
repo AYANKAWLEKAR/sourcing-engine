@@ -40,6 +40,9 @@ class JudgeResult:
     fit: float = 0.0
     rationale: str = ""
     standout_signals: list[str] = field(default_factory=list)
+    # Fix 11: True when the LLM returned unparseable output so callers can surface
+    # a "judge result unverified" flag rather than silently treating fit=0 as assessed.
+    unavailable: bool = False
 
 
 class LLMJudge:
@@ -60,7 +63,7 @@ class LLMJudge:
             ),
         )
         if not data:
-            return JudgeResult(fit=0.0, rationale="judge unavailable", standout_signals=[])
+            return JudgeResult(fit=0.0, rationale="judge unavailable", standout_signals=[], unavailable=True)
         try:
             fit = float(data.get("fit", 0.0))
         except (TypeError, ValueError):

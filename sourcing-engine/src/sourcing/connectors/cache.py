@@ -81,15 +81,34 @@ class RedisCache:
         self._client.set(key, json.dumps(value, default=str), ex=ttl_seconds)
 
 
+# Fix 6: module-level singleton so all connectors created without an explicit
+# cache= argument share one TTL cache within a process.  Cross-process sharing
+# requires REDIS_URL (RedisCache handles that automatically when configured).
+# Tests that need isolation should pass cache=InMemoryTTLCache() explicitly.
+_default_cache: Cache | None = None
+
+
 def get_default_cache() -> Cache:
-    """Return a Redis cache if available/configured, else an in-memory cache."""
+    """Return a process-level shared cache (Redis if configured, else in-memory)."""
+    global _default_cache
     import os
+
+    if _default_cache is not None:
+        return _default_cache
 
     url = os.environ.get("REDIS_URL")
     if url:
         try:
-            return RedisCache(url)
+            _default_cache = RedisCache(url)
+            return _default_cache
         except Exception:
-            # Redis not importable or not reachable — fall back to memory.
             pass
-    return InMemoryTTLCache()
+
+    _default_cache = InMemoryTTLCache()
+    return _default_cache
+
+
+def reset_default_cache() -> None:
+    """Reset the singleton — used in tests that need a fresh cache."""
+    global _default_cache
+    _default_cache = None

@@ -36,9 +36,15 @@ class BuyBox:
             return ruleset.rule(field_name).logic if ruleset.has_rule(field_name) else {}
 
         sector = logic("sector_keyword_match")
+        # Fix 4: also read the "include" key from sector_exclude_match.
+        # parse_logic for a keyword rule produces {"include": [...], "exclude": [...]}.
+        # Anti-fit keywords can be listed under either key depending on the CSV author,
+        # so we union all three to ensure none are silently dropped.
+        excl = logic("sector_exclude_match")
         excludes = list(sector.get("exclude") or [])
-        excludes += list(logic("sector_exclude_match").get("values") or [])
-        excludes += list(logic("sector_exclude_match").get("exclude") or [])
+        excludes += list(excl.get("include") or [])
+        excludes += list(excl.get("values") or [])
+        excludes += list(excl.get("exclude") or [])
 
         def is_exclude(field_name: str) -> bool:
             return (

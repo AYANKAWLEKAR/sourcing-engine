@@ -5,6 +5,7 @@ category + contacts, NO ABN. Cache TTL 7 days.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import TYPE_CHECKING
 
@@ -35,7 +36,13 @@ class YellowPagesConnector(ScrapeConnector):
         from ..models.company import CompanyRecord, Location, Provenance, Sector
 
         name = raw.get("name") or raw.get("title")
-        entity_id = f"yp:{raw.get('id') or raw.get('url') or name}"
+        raw_id = raw.get("id") or raw.get("url")
+        if not raw_id:
+            # Fix 14: use a content-hash fallback to prevent collisions when two
+            # businesses share the same display name.
+            stable_key = f"{name or ''}-{raw.get('postcode', '')}-{raw.get('state', '')}"
+            raw_id = "hash:" + hashlib.sha1(stable_key.encode()).hexdigest()[:12]
+        entity_id = f"yp:{raw_id}"
 
         category = raw.get("category") or raw.get("categories")
         cats = [category] if isinstance(category, str) else list(category or [])

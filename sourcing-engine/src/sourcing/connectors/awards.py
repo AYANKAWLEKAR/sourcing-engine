@@ -17,6 +17,7 @@ Extraction strategy (tuned for a local CPU model):
 from __future__ import annotations
 
 import re
+import warnings
 from typing import TYPE_CHECKING, Any
 
 from .base_agent import AgentConnector
@@ -83,6 +84,17 @@ class AwardRegisterConnector(AgentConnector):
             url = f"{base}/{slug}"
             md = self._fetch_page_markdown(url)  # raw page markdown (AgentConnector)
             blocks = _FINALIST_RE.findall(md)[: self.max_finalists]
+            # Fix 13: detect silent page-layout breakage.  Count H4 headers as a
+            # proxy for expected finalists; warn when structural extraction yields
+            # far fewer blocks than headers (page changed, regex no longer matches).
+            h4_count = md.count("\n####")
+            if h4_count > 1 and len(blocks) < h4_count * 0.5:
+                warnings.warn(
+                    f"award_page_extraction_degraded: {url} — "
+                    f"{h4_count} H4 headers but only {len(blocks)} structural blocks extracted. "
+                    "The finalist page layout may have changed; check the _FINALIST_RE pattern.",
+                    stacklevel=2,
+                )
             if not blocks:
                 continue
             categories = self._classify_categories(blocks)

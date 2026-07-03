@@ -10,6 +10,8 @@ is fabricated — unfillable fields get an ``unverified:*`` flag with a reason.
 """
 from __future__ import annotations
 
+import concurrent.futures
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from .signal_extractor import SignalExtractor
@@ -35,11 +37,42 @@ class EnrichmentNode:
         self.website = website  # None → skip live text fetch (use existing text)
         self.signal_extractor = signal_extractor or SignalExtractor()
 
-    def enrich_pool(self, pool: list[CompanyRecord], buybox: BuyBox) -> list[CompanyRecord]:
-        for rec in pool:
-            if not rec.abn:
-                continue  # only enrich resolved records
-            self.enrich_one(rec, buybox)
+    def enrich_pool(
+        self,
+        pool: list[CompanyRecord],
+        buybox: BuyBox,
+        *,
+        max_workers: int | None = None,
+        checkpoint: Callable[[CompanyRecord], None] | None = None,
+    ) -> list[CompanyRecord]:
+        """Enrich a pool of resolved records.
+
+        Fix 15: ``max_workers > 1`` runs enrichment concurrently via a
+        ``ThreadPoolExecutor`` (the rate limiter inside each APIConnector is
+        now thread-safe — Fix 16).
+
+        Fix 18: ``checkpoint`` is an optional ``Callable[[CompanyRecord], None]``
+        called after each record is enriched (e.g. write to the companies table).
+        If enrichment crashes partway through the pool the already-enriched records
+        are not lost.
+        """
+        records = [r for r in pool if r.abn]
+
+        if max_workers and max_workers > 1:
+            def _work(rec: CompanyRecord) -> CompanyRecord:
+                self.enrich_one(rec, buybox)
+                if checkpoint is not None:
+                    checkpoint(rec)
+                return rec
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+                list(ex.map(_work, records))
+        else:
+            for rec in records:
+                self.enrich_one(rec, buybox)
+                if checkpoint is not None:
+                    checkpoint(rec)
+
         return pool
 
     def enrich_one(self, rec: CompanyRecord, buybox: BuyBox) -> CompanyRecord:
@@ -52,8 +85,16 @@ class EnrichmentNode:
             try:
                 items = self.website.fetch({"url": website})
                 if items:
+                    # Fix 10: call normalize() to honour the SourceConnector contract
+                    # rather than reading raw Apify keys directly.  WebsiteFetchConnector
+                    # stores text in deferred_assessment["website_text_raw"].
                     first = items[0]
-                    rec.website_text_raw = first.get("markdown") or first.get("text") or ""
+                    normalized = self.website.normalize(first)
+                    rec.website_text_raw = (
+                        normalized.website_text_raw
+                        or normalized.deferred_assessment.get("website_text_raw")
+                        or ""
+                    )
             except Exception:
                 rec.flags.append("unverified:sector:website_fetch_failed")
 

@@ -35,9 +35,17 @@ class AusTenderConnector(APIConnector):
     rate_limit_rps: float = 2.0          # public service — be polite
     cache_ttl_seconds: int = 86400 * 7   # weekly; contracts don't churn fast
 
-    # Default scan window for a supplier lookup (recent contracts).
-    default_window_days: int = 180
-    max_pages: int = 3                   # bound the scan (≈ pages × API page size)
+    # Fix 12: raised from 180 → 730 days (2 years) so established suppliers with
+    # contracts older than 6 months are not incorrectly flagged as "no contracts".
+    # Configurable via Settings.austender_window_days.
+    default_window_days: int = 730
+    max_pages: int = 10                  # raised from 3; window cache absorbs re-queries
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        from ..config import get_settings
+        # Allow per-instance override via Settings so tests can shorten the window.
+        self.default_window_days = get_settings().austender_window_days
 
     # ---------- fetch ----------------------------------------------------------
 

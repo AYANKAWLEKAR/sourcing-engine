@@ -123,6 +123,11 @@ class FakeWebsite:
     def fetch(self, params):
         return [{"markdown": "We deliver commercial HVAC services to businesses across QLD."}]
 
+    def normalize(self, raw):
+        from sourcing.models.company import CompanyRecord
+        text = raw.get("markdown", "")
+        return CompanyRecord(entity_id="web:fake", website_text_raw=text)
+
 
 def test_enrichment_node_runs_waterfall():
     rec = CompanyRecord(entity_id="x", abn="1" * 11, legal_name="Acme Air",

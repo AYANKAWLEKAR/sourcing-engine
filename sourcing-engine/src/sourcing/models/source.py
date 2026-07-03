@@ -33,6 +33,8 @@ class SourceRegistryEntry(BaseModel):
     enabled: bool = True
     rate_limit: str | None = None
     connector_ref: str | None = None
+    # "shortlist_only" → never run during full-pool discovery sweep.
+    gate: str | None = None
     # Natural-language description embedded for vector retrieval (Step-1 RAG).
     capability_doc: str = ""
 

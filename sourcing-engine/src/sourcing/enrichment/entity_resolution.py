@@ -39,20 +39,31 @@ class EntityResolver:
             asic = ASICBulkConnector.from_settings()
         self.api = api
         self.asic = asic
-        self._last_match: dict = {}
 
     # ------------------------------------------------------------------
     # Name → ABN resolution
     # ------------------------------------------------------------------
 
-    def resolve(self, name: str | None, postcode: str | None, state: str | None) -> tuple[str | None, float]:
-        """Return ``(abn, confidence)``. abn is None below the keep threshold."""
+    def resolve(
+        self, name: str | None, postcode: str | None, state: str | None
+    ) -> tuple[str | None, float, dict]:
+        """Return ``(abn, confidence, best_candidate)``.
+
+        ``abn`` is None below the keep threshold. ``best_candidate`` is the raw
+        candidate dict (state/postcode for backfill) — callers should not rely on
+        the instance's internal state between calls.
+
+        Fix 5: the best candidate is now returned directly instead of being stored
+        in ``self._last_match``. The stash was a single-slot, thread-unsafe pattern:
+        two concurrent calls would overwrite each other's candidate before ``enrich()``
+        could read it.
+        """
         if not name:
-            return None, 0.0
+            return None, 0.0, {}
         norm = _SUFFIX.sub("", name).strip().lower()
         candidates = self.api.fetch({"name": norm or name, "state": state})
         if not candidates:
-            return None, 0.0
+            return None, 0.0, {}
 
         scored: list[tuple[dict, float]] = []
         for c in candidates:
@@ -63,23 +74,28 @@ class EntityResolver:
             scored.append((c, 0.60 * name_sim + 0.25 * pc + 0.15 * st))
 
         best, rc = max(scored, key=lambda x: x[1])
-        self._last_match = best  # stash for state/postcode backfill in enrich()
         if rc >= KEEP_THRESHOLD:
-            return best.get("abn"), rc  # accept (≥0.85) or keep-uncertain (0.60–0.85)
-        return None, rc  # unresolved
+            return best.get("abn"), rc, best  # accept (≥0.85) or keep-uncertain (0.60–0.85)
+        return None, rc, best  # unresolved but return candidate for diagnostics
 
     # ------------------------------------------------------------------
     # Anchor a scraped record to the spine
     # ------------------------------------------------------------------
 
     def enrich(self, record: CompanyRecord) -> CompanyRecord:
-        """Resolve + merge spine fields onto ``record``. Mutates and returns it."""
+        """Resolve + merge spine fields onto ``record``. Mutates and returns it.
+
+        Fix 5: consumes the 3-tuple from ``resolve()`` directly — no shared
+        ``_last_match`` stash, so concurrent ``enrich()`` calls are safe.
+        """
         from ..models.company import Provenance
 
         if record.abn:
             return record
 
-        abn, rc = self.resolve(record.legal_name, record.location.postcode, record.location.state)
+        abn, rc, cand = self.resolve(
+            record.legal_name, record.location.postcode, record.location.state
+        )
         record.resolution_confidence = rc
         if not abn:
             record.flags.append("unresolved_abn")
@@ -91,7 +107,6 @@ class EntityResolver:
 
         # Backfill state/postcode from the matched ABN-register candidate (the
         # register address is authoritative when the scraped record lacks them).
-        cand = self._last_match or {}
         if not record.location.state and cand.get("state"):
             record.location.state = cand["state"]
         if not record.location.postcode and cand.get("postcode"):

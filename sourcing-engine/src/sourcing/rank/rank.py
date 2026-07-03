@@ -76,6 +76,7 @@ def rank_pool(
                 judge_rationale=jr.rationale,
                 standout_signals=signals,
                 deferred_assessment=_deferred(record),
+                judge_unavailable=jr.unavailable,
             )
         )
 

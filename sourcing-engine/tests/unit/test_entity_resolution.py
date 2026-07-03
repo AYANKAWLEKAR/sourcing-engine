@@ -37,9 +37,10 @@ def test_resolve_accepts_high_confidence():
         {"abn": "11111111111", "org_name": "brisbane materials testing",
          "postcode": "4101", "state": "QLD"},
     ])
-    abn, rc = r.resolve("Brisbane Materials Testing Pty Ltd", "4101", "QLD")
+    abn, rc, cand = r.resolve("Brisbane Materials Testing Pty Ltd", "4101", "QLD")
     assert abn == "11111111111"
     assert rc >= 0.85
+    assert cand.get("abn") == "11111111111"  # Fix 5: candidate returned directly
 
 
 def test_resolve_unresolved_below_threshold():
@@ -47,9 +48,10 @@ def test_resolve_unresolved_below_threshold():
         {"abn": "22222222222", "org_name": "totally different co",
          "postcode": "2000", "state": "NSW"},
     ])
-    abn, rc = r.resolve("Brisbane Materials Testing", "4101", "QLD")
+    abn, rc, cand = r.resolve("Brisbane Materials Testing", "4101", "QLD")
     assert abn is None
     assert rc < 0.85
+    assert isinstance(cand, dict)  # still returns the best candidate for diagnostics
 
 
 def test_resolve_keeps_uncertain_band():
@@ -58,15 +60,16 @@ def test_resolve_keeps_uncertain_band():
         {"abn": "33333333333", "org_name": "brisbane materials testing",
          "postcode": "9999", "state": "NSW"},
     ])
-    abn, rc = r.resolve("Brisbane Materials Testing", "4101", "QLD")
+    abn, rc, cand = r.resolve("Brisbane Materials Testing", "4101", "QLD")
     assert abn == "33333333333"
     assert 0.60 <= rc < 0.85
 
 
 def test_resolve_no_candidates():
     r = _resolver([])
-    abn, rc = r.resolve("Anything", "4000", "QLD")
+    abn, rc, cand = r.resolve("Anything", "4000", "QLD")
     assert abn is None and rc == 0.0
+    assert cand == {}
 
 
 # ---------------------------------------------------------------------------

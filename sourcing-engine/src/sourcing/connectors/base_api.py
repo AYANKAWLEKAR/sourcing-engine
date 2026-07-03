@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -50,7 +51,12 @@ def unwrap_jsonp(text: str) -> Any:
 
 
 class _RateLimiter:
-    """Minimal token-bucket: ensures calls are spaced ≥ ``1/rps`` apart."""
+    """Minimal token-bucket: ensures calls are spaced ≥ ``1/rps`` apart.
+
+    Fix 16: ``_lock`` makes ``acquire()`` safe under concurrent threads.
+    Without the lock, two threads could both read the same ``_last_call``,
+    both pass the wait check, and both fire simultaneously — violating the limit.
+    """
 
     def __init__(
         self,
@@ -63,17 +69,19 @@ class _RateLimiter:
         self._clock = clock
         self._sleep = sleep
         self._last_call: float | None = None
+        self._lock = threading.Lock()
 
     def acquire(self) -> None:
         if self._min_interval <= 0:
             return
-        now = self._clock()
-        if self._last_call is not None:
-            wait = self._min_interval - (now - self._last_call)
-            if wait > 0:
-                self._sleep(wait)
-                now = self._clock()
-        self._last_call = now
+        with self._lock:
+            now = self._clock()
+            if self._last_call is not None:
+                wait = self._min_interval - (now - self._last_call)
+                if wait > 0:
+                    self._sleep(wait)
+                    now = self._clock()
+            self._last_call = now
 
 
 class APIConnector:

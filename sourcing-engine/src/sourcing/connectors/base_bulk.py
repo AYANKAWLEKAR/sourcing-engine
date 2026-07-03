@@ -19,6 +19,7 @@ extract is ~4.4M rows); DuckDB reads CSV natively, preserves leading zeros with
 """
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -33,6 +34,19 @@ if TYPE_CHECKING:
 # Single shared DuckDB file for all bulk sources, so cross-source joins
 # (e.g. abn ⋈ asic on acn) are one SQL statement.
 BULK_DB_PATH = DATA_DIR / "bulk.duckdb"
+
+# Fix 7: per-db-path locks prevent concurrent ensure_loaded() TOCTOU races.
+# DuckDB supports one writer; two threads that both pass the table_exists() check
+# would both call load() → DROP TABLE + CREATE TABLE → one destroys the other's data.
+_db_locks: dict[str, threading.Lock] = {}
+_db_locks_meta = threading.Lock()
+
+
+def _get_db_lock(db_path: str) -> threading.Lock:
+    with _db_locks_meta:
+        if db_path not in _db_locks:
+            _db_locks[db_path] = threading.Lock()
+        return _db_locks[db_path]
 
 
 class BulkConnector:
@@ -90,13 +104,19 @@ class BulkConnector:
 
         Idempotent: if the table is already loaded (and not ``force``), this is
         a cheap row-count check with no re-download.
+
+        Fix 7: the check-then-act sequence is guarded by a per-db-path lock so
+        two threads cannot both pass ``table_exists() == False`` and both call
+        ``load()`` (which drops and re-creates the table, corrupting each other).
         """
-        if force and self.table_exists():
-            self.conn.execute(f"DROP TABLE IF EXISTS {self.table_name}")
-        if not self.table_exists() or self.row_count() == 0:
-            self.download()
-            self.parse()
-            self.load()
+        lock = _get_db_lock(str(self._db_path))
+        with lock:
+            if force and self.table_exists():
+                self.conn.execute(f"DROP TABLE IF EXISTS {self.table_name}")
+            if not self.table_exists() or self.row_count() == 0:
+                self.download()
+                self.parse()
+                self.load()
         return self.row_count()
 
     # ------------------------------------------------------------------
