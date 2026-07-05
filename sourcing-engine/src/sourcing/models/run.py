@@ -1,4 +1,16 @@
-"""Run / Job contract (spec §3.5)."""
+"""Run contract — the persisted, observable pipeline run (next-phase plan §4.1).
+
+A run moves through the exact stage vocabulary of §4.1:
+
+    buybox → planning → acquiring → resolving → enriching → ranking → complete
+
+plus ``failed`` (with an error string) from any stage. ``buybox`` is the only
+interactive state — the multi-turn agent conversation happens there, over the API.
+Every transition appends ``{"status": ..., "at": <iso>}`` to ``stage_history``.
+
+``Run`` is the store snapshot / API status payload; the ORM row lives in
+``tables/core.py::RunRow``.
+"""
 from __future__ import annotations
 
 from enum import Enum
@@ -8,28 +20,37 @@ from pydantic import BaseModel, Field
 from .source import SourcePlanItem
 
 
-class RunStage(str, Enum):
-    SCHEMA = "schema"
-    SOURCE_SELECTION = "source_selection"
-    ACQUISITION = "acquisition"
+class RunStatus(str, Enum):
+    BUYBOX = "buybox"
+    PLANNING = "planning"
+    ACQUIRING = "acquiring"
+    RESOLVING = "resolving"
+    ENRICHING = "enriching"
     RANKING = "ranking"
-    DONE = "done"
+    COMPLETE = "complete"
     FAILED = "failed"
 
 
-class Coverage(BaseModel):
-    sources_hit: list[str] = Field(default_factory=list)
-    rows_fetched: int = 0
-    failures: list[str] = Field(default_factory=list)
-    cost_aud: float = 0.0
+# Ordered pipeline stages (excludes the interactive/terminal states).
+PIPELINE_STAGES: tuple[RunStatus, ...] = (
+    RunStatus.PLANNING,
+    RunStatus.ACQUIRING,
+    RunStatus.RESOLVING,
+    RunStatus.ENRICHING,
+    RunStatus.RANKING,
+)
 
 
 class Run(BaseModel):
+    """Snapshot of a run — what GET /runs/{id} returns (minus the shortlist typing)."""
+
     run_id: str
-    ruleset_id: str
+    status: RunStatus = RunStatus.BUYBOX
+    error: str | None = None
+    ruleset_id: str | None = None
     source_plan: list[SourcePlanItem] = Field(default_factory=list)
-    stage: RunStage = RunStage.SCHEMA
-    coverage: Coverage = Field(default_factory=Coverage)
-    pool_ref: str | None = None
-    results_ref: str | None = None
+    coverage: dict = Field(default_factory=dict)
+    shortlist: list[dict] | None = None  # RankedCompany dumps; None until ranked
+    stage_history: list[dict] = Field(default_factory=list)  # [{status, at}]
     created_at: str | None = None
+    updated_at: str | None = None

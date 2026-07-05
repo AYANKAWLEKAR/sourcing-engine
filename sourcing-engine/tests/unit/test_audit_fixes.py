@@ -26,7 +26,6 @@ import json
 import threading
 import time
 import warnings
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -34,16 +33,14 @@ import pytest
 from sourcing.connectors.cache import InMemoryTTLCache, get_default_cache, reset_default_cache
 from sourcing.connectors.connector_registry import ConnectorRegistry
 from sourcing.connectors.dedup import deduplicate_by_abn, deduplicate_pre_resolution
-from sourcing.enrichment.entity_resolution import EntityResolver
 from sourcing.enrichment.enrichment_node import EnrichmentNode
-from sourcing.enrichment.signal_extractor import SignalExtractor, _MAX_TEXT_CHARS
+from sourcing.enrichment.entity_resolution import EntityResolver
+from sourcing.enrichment.signal_extractor import _MAX_TEXT_CHARS, SignalExtractor
 from sourcing.llm import LLMResponse
-from sourcing.models.company import CompanyRecord, Location, MoatSignals, Provenance, Sector
+from sourcing.models.company import CompanyRecord, Location, Provenance
 from sourcing.rank.buybox import BuyBox
-from sourcing.rank.judge import JudgeResult, LLMJudge
+from sourcing.rank.judge import LLMJudge
 from sourcing.rank.rank import rank_pool
-from sourcing.rank.score import statistical_fit
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -138,11 +135,15 @@ class TestParamsForConnector:
 class TestSourcingOrchestrator:
     def _make_orchestrator(self, records_by_source: dict):
         """Build an orchestrator with fake connectors returning fixed records."""
-        from sourcing.models.source import ConnectorType, CostTier, SourcePlanItem, SourceRegistryEntry
+        from sourcing.models.source import (
+            ConnectorType,
+            SourcePlanItem,
+            SourceRegistryEntry,
+        )
         from sourcing.orchestrator import SourcingOrchestrator
 
         entries = []
-        for source_id, records in records_by_source.items():
+        for source_id, _records in records_by_source.items():
             entries.append(SourceRegistryEntry(
                 source_id=source_id,
                 connector_type=ConnectorType.SCRAPE,
@@ -249,7 +250,12 @@ class TestSourcingOrchestrator:
 class TestBuyBoxExcludeKeywords:
     def test_sector_exclude_match_include_captured(self):
         """Anti-fit keywords under the 'include' key must reach BuyBox.sector_exclude_keywords."""
-        from sourcing.models.filter_rule import DiscoveryAction, FilterRule, FilterRuleset, ScreenTier
+        from sourcing.models.filter_rule import (
+            DiscoveryAction,
+            FilterRule,
+            FilterRuleset,
+            ScreenTier,
+        )
 
         rule_exclude = FilterRule(
             field="sector_exclude_match",
@@ -287,7 +293,12 @@ class TestBuyBoxExcludeKeywords:
 
     def test_no_double_counting_of_sector_keyword_exclude(self):
         """sector_keyword_match.exclude should appear exactly once."""
-        from sourcing.models.filter_rule import DiscoveryAction, FilterRule, FilterRuleset, ScreenTier
+        from sourcing.models.filter_rule import (
+            DiscoveryAction,
+            FilterRule,
+            FilterRuleset,
+            ScreenTier,
+        )
 
         rule_sector = FilterRule(
             field="sector_keyword_match",
@@ -388,8 +399,10 @@ class TestResolverThreeTuple:
 
         t1 = threading.Thread(target=resolve_qld)
         t2 = threading.Thread(target=resolve_nsw)
-        t1.start(); t2.start()
-        t1.join(); t2.join()
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
 
         assert errors == [], f"State leaked between concurrent enrich() calls: {errors}"
 
@@ -474,8 +487,10 @@ class TestBulkConnectorThreadLock:
 
         t1 = threading.Thread(target=worker)
         t2 = threading.Thread(target=worker)
-        t1.start(); t2.start()
-        t1.join(); t2.join()
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
 
         # load() must have been called exactly once (the lock serialised the calls).
         assert load_count == [1], f"load() called {len(load_count)} times instead of 1"
@@ -921,7 +936,6 @@ class TestConnectorRegistry:
 
     def test_get_or_create_returns_same_connector(self):
         registry = ConnectorRegistry()
-        calls: list[int] = []
 
         class FakeConnector:
             pass

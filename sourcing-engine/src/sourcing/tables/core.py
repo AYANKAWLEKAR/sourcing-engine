@@ -16,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -105,14 +106,35 @@ class RunRow(Base):
     __tablename__ = "runs"
 
     run_id: Mapped[str] = mapped_column(String, primary_key=True)
-    ruleset_id: Mapped[str] = mapped_column(
-        ForeignKey("rulesets.ruleset_id", ondelete="CASCADE"), index=True
+    # Nullable: the run row is created at POST /runs, before a ruleset is confirmed.
+    ruleset_id: Mapped[str | None] = mapped_column(
+        ForeignKey("rulesets.ruleset_id", ondelete="CASCADE"), index=True, nullable=True
     )
     source_plan: Mapped[list] = mapped_column(JSON, default=list)
-    stage: Mapped[str] = mapped_column(String, default="schema")
+    status: Mapped[str] = mapped_column(String, default="buybox")
     coverage: Mapped[dict] = mapped_column(JSON, default=dict)
+    shortlist: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    stage_history: Mapped[list] = mapped_column(JSON, default=list)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
     pool_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     results_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class RunCompanyRow(Base):
+    """Run ↔ candidate-pool membership (serves the per-run company endpoints)."""
+
+    __tablename__ = "run_companies"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.run_id", ondelete="CASCADE"), primary_key=True
+    )
+    entity_id: Mapped[str] = mapped_column(String, primary_key=True)
+    abn: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    selected: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

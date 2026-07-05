@@ -58,10 +58,10 @@ class AgentConnector(ScrapeConnector):
         return extractor(extract_prompt, markdown)
 
     def _default_extractor(self) -> Any:
-        """Build the fallback extractor: a local qwen call in JSON mode.
+        """Build the fallback extractor: a JSON LLM call on the enrich model.
 
         Returns a callable ``(prompt, content) -> dict`` (the extractor contract).
-        Uses ``complete_json`` with the qwen ``enrich_model`` — NOT the agent model,
+        Uses ``complete_json`` with the ``enrich_model`` — NOT the agent model —
         and forces JSON output.
         """
         from ..config import get_settings

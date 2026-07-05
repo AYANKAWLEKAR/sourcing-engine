@@ -20,16 +20,23 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://sourcing:sourcing@localhost:5432/sourcing"
 
-    # LLM (Ollama — runs locally / on Docker; no cloud API used)
-    llm_provider: str = "ollama"
+    # LLM provider: "anthropic" (Claude Messages API, default) or "ollama"
+    # (local/self-hosted fallback).
+    llm_provider: str = "anthropic"
+
+    # Anthropic (Claude) — the default provider.
+    anthropic_api_key: str = ""
+    llm_timeout: float = 120.0   # per-request HTTP timeout (Claude calls are seconds, not minutes)
+    llm_max_tokens: int = 4096   # ample for tool calls + JSON extraction + judge output
+    # Model per role. Default to the most capable Opus; enrich/judge are high-volume,
+    # so set ENRICH_MODEL/JUDGE_MODEL=claude-haiku-4-5 in .env to trade quality for cost.
+    agent_model: str = "claude-opus-4-8"   # buy-box agent (tool-use loop)
+    enrich_model: str = "claude-opus-4-8"  # signal extractor (website text -> JSON signals)
+    judge_model: str = "claude-opus-4-8"   # LLM judge (full record -> calibrated fit)
+
+    # Ollama fallback (used only when llm_provider="ollama").
     ollama_host: str = "http://localhost:11434"
-    ollama_timeout: float = 900.0  # generous — CPU-only qwen is slow on big list extractions
-    agent_model: str = "gpt-oss:20b"
-    # Enrichment + ranking models (qwen by default — strong local JSON output).
-    # 3b is the default for CPU-only Docker (fast); set to qwen2.5:7b for quality
-    # if you have GPU/Metal or patience.
-    enrich_model: str = "qwen2.5:3b"   # signal extractor (website text -> JSON signals)
-    judge_model: str = "qwen2.5:3b"    # LLM judge (full record -> calibrated fit)
+    ollama_timeout: float = 900.0  # generous — CPU-only local models are slow on big extractions
 
     # Embeddings
     embed_provider: str = "hash"  # hash | ollama
@@ -58,6 +65,16 @@ class Settings(BaseSettings):
 
     # Apify (scrape connectors: Google Maps, Yellow Pages, Website, LinkedIn)
     apify_api_token: str = ""
+
+    # Run orchestration (Part C). With Claude the judge is fast (~seconds/call),
+    # so the pool is sized for coverage; Apify spend, not LLM latency, is the cap.
+    run_workers: int = 1          # concurrent pipeline executions
+    run_plan_k: int = 8           # sources in the retrieved SourcePlan
+    run_max_places: int = 25      # scrape cap per state tile (Apify cost bound)
+    run_enrich_workers: int = 4   # concurrent enrichment threads within a run
+    run_top_k: int = 10           # shortlist size
+    run_judge_k: int = 25         # records sent to the LLM judge
+    shortlist_gate_n: int = 10    # top-N passed through the shortlist gate
 
 
 _settings: Settings | None = None

@@ -15,6 +15,9 @@ dependencies = [
     "typer>=0.12",
     "rich>=13.7",
     "duckdb>=1.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "anthropic>=0.40",
 ]
 
 [project.optional-dependencies]
@@ -42,7 +45,7 @@ where = ["src"]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
 markers = [
-    "integration: tests that require live services (Postgres + pgvector, Ollama). Run with -m integration.",
+    "integration: tests that require live services (Postgres + pgvector; the LLM connectivity test needs ANTHROPIC_API_KEY, or a local server when LLM_PROVIDER=ollama). Run with -m integration.",
 ]
 addopts = "-ra"
 asyncio_mode = "auto"

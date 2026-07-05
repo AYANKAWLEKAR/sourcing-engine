@@ -1,8 +1,8 @@
 """SignalExtractor — website text → ranked signals (next-phase plan §2.1).
 
 Classifies ``website_text_raw`` into the sector/model/moat fields the ranker
-scores. Uses a **local Ollama model (qwen by default)** in JSON mode — NOT a
-cloud API. The LLM client is injectable so unit tests run offline with a fake.
+scores, via one JSON LLM call on the configured ``enrich_model`` (Claude by
+default). The LLM client is injectable so unit tests run offline with a fake.
 
 Never fabricates: empty/short text → an ``unverified:sector:no_website_text``
 flag and an untouched record.

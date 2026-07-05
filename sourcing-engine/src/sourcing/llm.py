@@ -1,9 +1,15 @@
 """LLMClient — a thin, injectable wrapper over a tool-calling chat LLM (plan §2, §6).
 
-The default implementation targets a local **Ollama** server (`/api/chat`) with a
-model that supports tool calling (e.g. ``gpt-oss:20b``, ``llama3.1``, ``qwen2.5``).
-The agent depends only on the :class:`LLMClient` protocol, so unit tests inject a
-scripted mock and need no live server.
+Two live implementations behind one protocol:
+
+* :class:`AnthropicLLMClient` — the Claude Messages API (the default provider). Fast,
+  reliable tool calling and JSON output; the model ids come from ``config`` (default
+  ``claude-opus-4-8``).
+* :class:`OllamaLLMClient` — a local Ollama server (``/api/chat``). Kept as an
+  offline/self-hosted fallback (``LLM_PROVIDER=ollama``).
+
+The rest of the engine depends only on the :class:`LLMClient` protocol, so unit tests
+inject a scripted mock and need no live server or API key.
 """
 from __future__ import annotations
 
@@ -42,6 +48,173 @@ class LLMClient(Protocol):
         tools: list[dict] | None = None,
         format: str | dict | None = None,
     ) -> LLMResponse: ...
+
+
+# ---------------------------------------------------------------------------
+# Anthropic (Claude Messages API) — the default provider
+# ---------------------------------------------------------------------------
+
+
+def _to_anthropic_tools(tools: list[dict] | None) -> list[dict]:
+    """Translate Ollama/OpenAI function schemas to Anthropic tool definitions.
+
+    ``{"type": "function", "function": {"name", "description", "parameters"}}``
+    → ``{"name", "description", "input_schema"}``.
+    """
+    out: list[dict] = []
+    for t in tools or []:
+        fn = t.get("function", t)
+        out.append(
+            {
+                "name": fn.get("name", ""),
+                "description": fn.get("description", ""),
+                "input_schema": fn.get("parameters") or {"type": "object", "properties": {}},
+            }
+        )
+    return out
+
+
+def _to_anthropic_messages(messages: list[dict]) -> list[dict]:
+    """Translate the engine's provider-agnostic history to Anthropic's message shape.
+
+    The internal history (see ``BuyBoxAgent.step``) is user/assistant messages plus
+    ``{"role": "tool", ...}`` results, where an assistant turn carries
+    ``tool_calls=[{"function": {"name", "arguments"}}]`` and its results follow as
+    separate ``tool`` messages in the SAME order. Anthropic instead needs matching
+    ``tool_use`` / ``tool_result`` ids and all results for one turn in a single user
+    message — so we synthesize ids positionally (or reuse a stored ``id``) and coalesce
+    consecutive tool results.
+    """
+    out: list[dict] = []
+    pending_results: list[dict] = []
+    pending_ids: list[str] = []
+    counter = 0
+
+    def _flush() -> None:
+        nonlocal pending_results
+        if pending_results:
+            out.append({"role": "user", "content": pending_results})
+            pending_results = []
+
+    for msg in messages:
+        role = msg.get("role")
+        if role == "tool":
+            tid = msg.get("tool_call_id") or (
+                pending_ids.pop(0) if pending_ids else f"toolu_{counter}"
+            )
+            counter += 1
+            pending_results.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tid,
+                    "content": str(msg.get("content", "")),
+                }
+            )
+            continue
+
+        _flush()  # emit any collected tool_results before the next non-tool turn
+        if role == "assistant":
+            blocks: list[dict] = []
+            text = msg.get("content") or ""
+            if text.strip():
+                blocks.append({"type": "text", "text": text})
+            pending_ids = []
+            for tc in msg.get("tool_calls") or []:
+                fn = tc.get("function") or tc
+                tid = tc.get("id") or f"toolu_{counter}"
+                counter += 1
+                pending_ids.append(tid)
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": tid,
+                        "name": fn.get("name", ""),
+                        "input": fn.get("arguments") or {},
+                    }
+                )
+            if not blocks:  # Anthropic rejects empty assistant content
+                blocks.append({"type": "text", "text": "(no content)"})
+            out.append({"role": "assistant", "content": blocks})
+        else:  # user
+            out.append({"role": "user", "content": msg.get("content", "")})
+
+    _flush()
+    return out
+
+
+class AnthropicLLMClient:
+    """Tool-calling chat against the Anthropic (Claude) Messages API.
+
+    Implements the same :class:`LLMClient` protocol as :class:`OllamaLLMClient` by
+    translating the engine's provider-agnostic message/tool format to Anthropic's
+    Messages API and mapping ``tool_use`` response blocks back to :class:`ToolCall`.
+    Adaptive thinking is intentionally left off — the engine's history is
+    text + tool-call only, so there are no thinking blocks to preserve across turns.
+    """
+
+    def __init__(
+        self,
+        api_key: str = "",
+        timeout: float = 120.0,
+        max_tokens: int = 4096,
+        client: Any = None,
+    ):
+        self._max_tokens = max_tokens
+        if client is not None:  # tests inject a fake
+            self._client = client
+            return
+        import anthropic
+
+        if not api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY is not set but LLM_PROVIDER='anthropic'. "
+                "Add ANTHROPIC_API_KEY to .env or set LLM_PROVIDER=ollama."
+            )
+        self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+
+    def chat(
+        self,
+        model: str,
+        system: str,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        format: str | dict | None = None,
+    ) -> LLMResponse:
+        sys_text = system
+        if format:  # no native JSON param on Anthropic — reinforce via the system prompt
+            sys_text = (
+                system
+                + "\n\nRespond with ONLY a single valid JSON object. "
+                "Do not wrap it in markdown code fences or add any prose."
+            ).strip()
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "max_tokens": self._max_tokens,
+            "system": sys_text,
+            "messages": _to_anthropic_messages(messages),
+        }
+        anth_tools = _to_anthropic_tools(tools)
+        if anth_tools:
+            kwargs["tools"] = anth_tools
+
+        resp = self._client.messages.create(**kwargs)
+
+        text_parts: list[str] = []
+        calls: list[ToolCall] = []
+        for block in resp.content:
+            btype = getattr(block, "type", None)
+            if btype == "text":
+                text_parts.append(block.text)
+            elif btype == "tool_use":
+                args = block.input if isinstance(block.input, dict) else {}
+                calls.append(ToolCall(name=block.name, arguments=dict(args), id=block.id))
+        return LLMResponse(text="".join(text_parts).strip(), tool_calls=calls)
+
+
+# ---------------------------------------------------------------------------
+# Ollama — local/self-hosted fallback provider
+# ---------------------------------------------------------------------------
 
 
 class OllamaLLMClient:
@@ -128,7 +301,9 @@ def complete_json(
     import json
     import re
 
-    resp = llm.chat(model=model, system=system, messages=[{"role": "user", "content": user}], format="json")
+    resp = llm.chat(
+        model=model, system=system, messages=[{"role": "user", "content": user}], format="json"
+    )
     text = (resp.text or "").strip()
     try:
         return json.loads(text)
@@ -142,17 +317,12 @@ def complete_json(
         return {}
 
 
-def complete_text(llm: LLMClient, model: str, system: str, user: str) -> str:
-    """Plain-text completion (no JSON grammar constraint).
-
-    Preferred over ``complete_json`` for large/list outputs on a local CPU model:
-    grammar-constrained JSON decoding is pathologically slow there, while plain
-    text is much faster. The caller parses the result.
-    """
-    resp = llm.chat(model=model, system=system, messages=[{"role": "user", "content": user}])
-    return (resp.text or "").strip()
-
-
 def get_llm_client(settings: Settings | None = None) -> LLMClient:
     settings = settings or get_settings()
+    if settings.llm_provider == "anthropic":
+        return AnthropicLLMClient(
+            api_key=settings.anthropic_api_key,
+            timeout=settings.llm_timeout,
+            max_tokens=settings.llm_max_tokens,
+        )
     return OllamaLLMClient(host=settings.ollama_host, timeout=settings.ollama_timeout)

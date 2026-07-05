@@ -7,7 +7,7 @@ from .filter_rule import (
     FilterRuleset,
     ScreenTier,
 )
-from .run import Coverage, Run, RunStage
+from .run import PIPELINE_STAGES, Run, RunStatus
 from .source import (
     ConnectorType,
     CostTier,
@@ -22,9 +22,9 @@ __all__ = [
     "FilterRule",
     "FilterRuleset",
     "ScreenTier",
-    "Coverage",
+    "PIPELINE_STAGES",
     "Run",
-    "RunStage",
+    "RunStatus",
     "ConnectorType",
     "CostTier",
     "SourcePlanItem",

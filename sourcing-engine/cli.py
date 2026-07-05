@@ -298,5 +298,114 @@ def asic_fetch(
     connector.close()
 
 
+@app.command("run")
+def run_pipeline(
+    buy_box: str = typer.Argument(..., help="Natural-language buy box."),
+    yes: bool = typer.Option(False, "--yes", help="Auto-answer clarifying questions with defaults."),
+    no_db: bool = typer.Option(False, "--no-db", help="In-memory store (no Postgres needed)."),
+    top_k: int = typer.Option(None, "--top-k", help="Shortlist size override."),
+    max_places: int = typer.Option(None, "--max-places", help="Scrape cap per state tile."),
+) -> None:
+    """Drive a full persisted run synchronously: buy box → ranked shortlist.
+
+    Same RunPipeline the API serves, run inline for terminal demos.
+    Needs Ollama (agent + qwen); live connectors spend Apify credits.
+    """
+    from sourcing.runs.manager import InlineExecutor, RunManager
+    from sourcing.runs.pipeline import RunPipeline
+    from sourcing.runs.store import InMemoryRunStore, PostgresRunStore
+
+    settings = get_settings()
+    if top_k is not None:
+        settings.run_top_k = top_k
+    if max_places is not None:
+        settings.run_max_places = max_places
+
+    # Store: Postgres when reachable (unless --no-db), else warn + in-memory.
+    store = None
+    if not no_db:
+        try:
+            from sqlalchemy import text as sqltext
+
+            from sourcing.db import get_engine
+
+            with get_engine().connect() as conn:
+                conn.execute(sqltext("SELECT 1"))
+            store = PostgresRunStore()
+            console.print("[dim]store: Postgres[/]")
+        except Exception:
+            console.print("[yellow]Postgres unreachable — falling back to in-memory store.[/]")
+    if store is None:
+        store = InMemoryRunStore()
+        if no_db:
+            console.print("[dim]store: in-memory (--no-db)[/]")
+
+    pipeline = RunPipeline(
+        store,
+        settings=settings,
+        status_listener=lambda rid, st: console.print(f"[cyan]stage[/] → {st.value}"),
+    )
+    manager = RunManager(store, pipeline=pipeline, executor=InlineExecutor(), settings=settings)
+
+    console.print(f'[bold cyan]Run[/]: "{buy_box}"')
+    result = manager.start_run(buy_box)
+    run_id = result.run_id
+    turn = result.turn
+    console.print(f"[dim]run_id: {run_id}[/]")
+
+    while not turn.ruleset.confirmed and not turn.done:
+        console.print(f"[green]agent[/]: {turn.text}")
+        answer = (
+            "Use sensible defaults and finalize the ruleset."
+            if yes
+            else console.input("[bold]you[/]: ")
+        )
+        if yes:
+            console.print(f"[dim]auto-reply: {answer}[/]")
+        turn = manager.continue_buybox(run_id, answer)
+
+    if not turn.ruleset.confirmed:
+        console.print("[bold yellow]NEEDS REVIEW[/] — question cap hit before confirmation.")
+        raise typer.Exit(1)
+
+    run = manager.get_run(run_id)
+    if run is None or run.status.value == "failed":
+        console.print(f"[bold red]FAILED[/]: {run.error if run else 'unknown'}")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold]coverage[/]: {run.coverage}")
+    table = Table(title=f"Ranked shortlist — {run_id}  ({run.status.value})")
+    table.add_column("#", justify="right")
+    table.add_column("company", overflow="fold")
+    table.add_column("abn")
+    table.add_column("S_final", justify="right")
+    table.add_column("judge", justify="right")
+    table.add_column("standout", overflow="fold")
+    for i, rc in enumerate(run.shortlist or [], 1):
+        rec = rc.get("record", {})
+        table.add_row(
+            str(i),
+            (rec.get("legal_name") or "")[:36],
+            rec.get("abn") or "",
+            f"{rc.get('s_final', 0):.3f}",
+            f"{rc.get('judge_fit') or 0:.2f}",
+            "; ".join(rc.get("standout_signals", [])[:2]),
+        )
+    console.print(table)
+    console.print(f"[dim]stages: {[h['status'] for h in run.stage_history]}[/]")
+
+
+@app.command("serve")
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port"),
+) -> None:
+    """Serve the run API (single worker only — buy-box sessions are in-process)."""
+    import uvicorn
+
+    console.print(f"[bold cyan]Origo run API[/] → http://{host}:{port}  (docs at /docs)")
+    uvicorn.run("sourcing.api.app:app", host=host, port=port, workers=1)
+
+
 if __name__ == "__main__":
     app()

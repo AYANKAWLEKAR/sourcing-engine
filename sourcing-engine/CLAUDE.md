@@ -32,19 +32,26 @@ pytest -m "not integration" --cov=sourcing.ruleset --cov=sourcing.agent.tools --
 # Tests — single file
 pytest tests/unit/test_ranking.py -v
 
-# Tests — integration (needs Postgres + Ollama running)
+# Tests — integration (needs Postgres; LLM connectivity test needs ANTHROPIC_API_KEY,
+# or a local server when LLM_PROVIDER=ollama)
 pytest -m integration
 
 # CLI
 python cli.py ruleset                    # inspect loaded FilterRuleset from CSV
-python cli.py buybox                     # multi-turn Buy-Box Agent (needs Ollama)
+python cli.py buybox                     # multi-turn Buy-Box Agent (needs ANTHROPIC_API_KEY)
 python cli.py sources "B2B testing QLD"  # ranked Source Plan (offline by default)
 python cli.py asic-load                  # load ASIC CSV -> data/bulk.duckdb
 python cli.py asic-lookup 000000019      # point-lookup by ACN or ABN
 python cli.py fetch-abn 51824753556      # live ABN Lookup API call
 
+# Runs (Part C — persisted, observable pipeline runs)
+python cli.py run "HVAC installers in QLD" --yes   # full synchronous run (Claude + Apify)
+python cli.py run "..." --no-db                    # in-memory store (no Postgres)
+python cli.py serve                                # FastAPI on :8000 (single worker only)
+
 # Demos
 python scripts/rank_demo.py              # end-to-end: discovery → resolve → enrich → rank
+python scripts/run_api_demo.py           # drives the live HTTP API: POST /runs → poll → shortlist
 ```
 
 ## Architecture
@@ -80,17 +87,19 @@ One `SourceConnector` Protocol (two methods: `fetch(params) → [RawRecord]`, `n
 - **`rag/retriever.py`** — `SourceRetriever`: vector cosine similarity over capability docs + field coverage filter + cost ceiling. Two invariants always enforced: spine source present, ≥1 text source present.
 - **`enrichment/entity_resolution.py`** — `EntityResolver.resolve(name, postcode, state)`: name → ABN via ABN Lookup API, re-ranked `0.60·name_sim + 0.25·postcode + 0.15·state`, merges ASIC spine fields. Accept threshold 0.85; keep with `abn_match_uncertain` flag at 0.60–0.85.
 - **`enrichment/enrichment_node.py`** — orchestrates AusTender enrichment + website fetch + signal extractor over the candidate pool.
-- **`enrichment/signal_extractor.py`** — website text → `business_model`, `keyword_hits`, ANZSIC, moat signals via qwen in JSON mode.
+- **`enrichment/signal_extractor.py`** — website text → `business_model`, `keyword_hits`, ANZSIC, moat signals via the `enrich_model` (Claude) in JSON mode.
 - **`rank/rank.py`** — `rank_pool(pool, buybox)`: screen → statistical score (top 50) → LLM judge (blended `S_final = 0.55·(S_stat/100) + 0.45·judge_fit`) → postcode diversity cap.
+- **`runs/`** (Part C) — persisted, observable runs. `store.py`: `RunStore` Protocol with `InMemoryRunStore` (tests/`--no-db`) and `PostgresRunStore` (writes `runs`/`run_companies`/`rulesets`/`filter_rules`/`companies`). `pipeline.py`: `RunPipeline.execute(run_id, ruleset)` chains planning→acquiring→resolving→enriching→ranking with a status write per stage (§4.1 vocabulary: `buybox → planning → acquiring → resolving → enriching → ranking → complete|failed`); enrichment checkpoints each record to the store. `shortlist_gate.py`: post-rank gated enrichment (LinkedIn if enabled + `ProxyEstimator` always). `manager.py`: `RunManager` holds live `BuyBoxAgent` sessions in-process (buybox stage), rewrites the ruleset id to `rs_{run_id}` on confirm, submits the pipeline to a `ThreadPoolExecutor` (`run_workers=1`).
+- **`api/app.py`** — `create_app(manager)` FastAPI factory; 6 endpoints (`POST /runs`, `POST /runs/{id}/buybox`, `GET /runs/{id}`, `GET /runs/{id}/companies/{abn}[,/sources]`, `POST /runs/{id}/select`). Handlers are plain `def` (blocking work → threadpool); serve with ONE worker only (in-process agent sessions).
 - **`rank/score.py`** — locked scoring model: `fit = 0.50·s_sector + 0.25·s_state + 0.25·s_model`. No `s_ai`/`s_frag`/`s_size`/`s_age`. An AST-based unit test guards the formula.
-- **`llm.py`** — `LLMClient` interface (`OllamaLLMClient` live; `ScriptedLLMClient` for tests).
+- **`llm.py`** — `LLMClient` interface. `AnthropicLLMClient` (default; Claude Messages API, translates the engine's provider-agnostic history/tools to Anthropic's shape) and `OllamaLLMClient` (local fallback) are live; `ScriptedLLMClient` for tests. `get_llm_client()` routes on `settings.llm_provider`.
 - **`rag/embeddings.py`** — `EmbeddingProvider`: `HashingEmbeddingProvider` (offline/deterministic) or `OllamaEmbeddingProvider`.
 - **`rag/vector_store.py`** — `VectorStore`: `InMemoryVectorStore` (unit tests) or `PgVectorStore` (pgvector).
 - **`connectors/cache.py`** — `InMemoryTTLCache` (default) or `RedisCache` (set `REDIS_URL`).
 
 ### Settings (`src/sourcing/config.py`)
 
-Pydantic-settings, loaded from `.env`. Key vars: `DATABASE_URL` (port 5433 by default), `AGENT_MODEL` (default `gpt-oss:20b`), `ENRICH_MODEL`/`JUDGE_MODEL` (default `qwen2.5:3b`), `EMBED_PROVIDER` (`hash`|`ollama`), `ABN_LOOKUP_GUID`, `ASIC_CSV_PATH`, `APIFY_API_TOKEN`.
+Pydantic-settings, loaded from `.env`. Key vars: `DATABASE_URL` (port 5433 by default), `LLM_PROVIDER` (`anthropic` default | `ollama`), `ANTHROPIC_API_KEY`, `AGENT_MODEL`/`ENRICH_MODEL`/`JUDGE_MODEL` (default `claude-opus-4-8`; point ENRICH/JUDGE at `claude-haiku-4-5` to cut cost on high-volume calls), `EMBED_PROVIDER` (`hash`|`ollama`), `ABN_LOOKUP_GUID`, `ASIC_CSV_PATH`, `APIFY_API_TOKEN`.
 
 ### Test conventions
 

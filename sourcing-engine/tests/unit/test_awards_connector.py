@@ -1,12 +1,12 @@
 """Offline unit tests for the Telstra award-register AgentConnector.
 
 No network / no LLM: the Apify client returns fixed page markdown and the LLM client
-returns a fixed plain-text category list. Names/states are parsed structurally; categories
-come from the (faked) LLM. Also guards the base_agent `_default_extractor` fix.
+returns a fixed JSON category object. Names/states are parsed structurally; categories
+come from the (faked) LLM in JSON mode. Also guards the base_agent `_default_extractor`.
 """
 from __future__ import annotations
 
-from sourcing.connectors.awards import TelstraAwardsConnector, _parse_numbered
+from sourcing.connectors.awards import TelstraAwardsConnector
 from sourcing.connectors.base_agent import AgentConnector
 from sourcing.llm import LLMResponse
 
@@ -33,6 +33,9 @@ qld Finalist
 Chatstat is an AI child-safety monitoring tool for families.
 """
 
+# Three finalists → a categories list of length 3, aligned by index.
+_CATEGORIES_JSON = '{"categories": ["software provider", "waste recycling", "AI safety software"]}'
+
 
 class FakeApify:
     def actor(self, actor_id):
@@ -57,10 +60,10 @@ class FakeApify:
 
 
 class FakeLLM:
-    """LLMClient returning a fixed plain-text numbered category list."""
+    """LLMClient returning a fixed JSON categories object."""
 
-    def __init__(self, text):
-        self._text = text
+    def __init__(self, json_text):
+        self._text = json_text
         self.calls = []
 
     def chat(self, model, system, messages, tools=None, format=None):
@@ -68,8 +71,8 @@ class FakeLLM:
         return LLMResponse(text=self._text)
 
 
-def _connector(categories_text):
-    return TelstraAwardsConnector(client=FakeApify(), llm_client=FakeLLM(categories_text))
+def _connector(categories_json=_CATEGORIES_JSON):
+    return TelstraAwardsConnector(client=FakeApify(), llm_client=FakeLLM(categories_json))
 
 
 # ---------------------------------------------------------------------------
@@ -81,22 +84,31 @@ def test_inherits_agentconnector():
 
 
 def test_fetch_parses_names_states_and_classifies():
-    fake_llm = FakeLLM("1. software provider\n2. waste recycling\n3. AI safety software")
+    fake_llm = FakeLLM(_CATEGORIES_JSON)
     c = TelstraAwardsConnector(client=FakeApify(), llm_client=fake_llm)
     recs = c.fetch({"year": 2025, "categories": ["embracing-innovation"]})
 
     assert [r["org_name"] for r in recs] == ["Comtrac", "Big Bag Recovery", "Chatstat"]
     assert [r["state"] for r in recs] == ["QLD", "ACT", "QLD"]        # 'qld' normalized
-    assert [r["raw"]["category"] for r in recs] == ["software provider", "waste recycling", "AI safety software"]
-    # Plain-text mode (NOT JSON grammar) — the whole point on CPU.
-    assert fake_llm.calls and fake_llm.calls[0]["format"] is None
+    assert [r["raw"]["category"] for r in recs] == [
+        "software provider", "waste recycling", "AI safety software"
+    ]
+    # Category classification runs in JSON mode (fast + reliable on Claude).
+    assert fake_llm.calls and fake_llm.calls[0]["format"] == "json"
 
 
 def test_fetch_sweeps_all_categories_by_default():
-    fake_llm = FakeLLM("1. x\n2. y\n3. z")
+    fake_llm = FakeLLM('{"categories": ["x", "y", "z"]}')
     c = TelstraAwardsConnector(client=FakeApify(), llm_client=fake_llm)
     c.fetch({})  # no categories → one classify call per default slug
     assert len(fake_llm.calls) == len(TelstraAwardsConnector.category_slugs)
+
+
+def test_fetch_tolerates_short_category_list():
+    # Fewer categories than finalists → missing ones fall back to None (no crash).
+    c = TelstraAwardsConnector(client=FakeApify(), llm_client=FakeLLM('{"categories": ["only one"]}'))
+    recs = c.fetch({"categories": ["embracing-innovation"]})
+    assert [r["raw"]["category"] for r in recs] == ["only one", None, None]
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +116,7 @@ def test_fetch_sweeps_all_categories_by_default():
 # ---------------------------------------------------------------------------
 
 def test_normalize_sets_award_signal_and_category():
-    c = _connector("1. software provider\n2. waste recycling\n3. AI safety software")
+    c = _connector()
     rec = c.normalize(c.fetch({"categories": ["embracing-innovation"]})[0])
 
     assert rec.entity_id == "award:telstra:comtrac"
@@ -122,7 +134,7 @@ def test_normalize_sets_award_signal_and_category():
 
 
 def test_normalize_provenance_separates_fact_from_inference():
-    c = _connector("1. software provider\n2. waste recycling\n3. AI safety software")
+    c = _connector()
     rec = c.normalize(c.fetch({"categories": ["embracing-innovation"]})[0])
     conf = {p.field: p.confidence for p in rec.provenance}
     assert conf["award_finalist"] == 0.9   # verbatim page fact
@@ -130,38 +142,10 @@ def test_normalize_provenance_separates_fact_from_inference():
 
 
 # ---------------------------------------------------------------------------
-# Numbered-list parser
+# base_agent._default_extractor — enrich_model + JSON mode
 # ---------------------------------------------------------------------------
 
-def test_parse_numbered_aligns_by_index_and_fills_gaps():
-    out = _parse_numbered("1. alpha\n3. gamma\ngarbage line", 3)
-    assert out == ["alpha", None, "gamma"]
-
-
-def test_clean_category_strips_name_echo():
-    from sourcing.connectors.awards import _clean_category
-
-    # qwen sometimes echoes "Name — category"; keep only the category.
-    assert _clean_category("Big Bag Recovery — environmental", "Big Bag Recovery") == "environmental"
-    assert _clean_category("Comtrac: software provider", "Comtrac") == "software provider"
-    # Clean category is untouched; internal hyphens preserved.
-    assert _clean_category("environmental", "Big Bag Recovery") == "environmental"
-    assert _clean_category("non-destructive testing", "QMS NDT") == "non-destructive testing"
-
-
-def test_fetch_cleans_echoed_category():
-    # LLM prefixes the name to the category this time.
-    fake_llm = FakeLLM("1. Comtrac — software provider\n2. Big Bag Recovery — waste recycling\n3. Chatstat — AI safety")
-    c = TelstraAwardsConnector(client=FakeApify(), llm_client=fake_llm)
-    recs = c.fetch({"categories": ["embracing-innovation"]})
-    assert [r["raw"]["category"] for r in recs] == ["software provider", "waste recycling", "AI safety"]
-
-
-# ---------------------------------------------------------------------------
-# base_agent._default_extractor fix — qwen enrich_model + JSON mode
-# ---------------------------------------------------------------------------
-
-def test_default_extractor_uses_qwen_json(monkeypatch):
+def test_default_extractor_uses_enrich_model_json(monkeypatch):
     from sourcing.config import get_settings
 
     class FakeJSONLLM:

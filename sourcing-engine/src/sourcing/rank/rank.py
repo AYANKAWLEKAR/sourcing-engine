@@ -23,8 +23,12 @@ _JUDGE_WEIGHT = 0.45
 _DEFAULT_POSTCODE_CAP = 3
 
 
-def _deferred(record: CompanyRecord) -> list[str]:
-    """Open diligence questions: the unverified fields + standard checks."""
+def deferred_items(record: CompanyRecord) -> list[str]:
+    """Open diligence questions: the unverified fields + standard checks.
+
+    Public so the shortlist gate can rebuild a RankedCompany's checklist after
+    late enrichment (headcount/proxy estimates) changes the record.
+    """
     items = [f for f in (*record.flags, *record.screen.flags) if f.startswith("unverified:")]
     if record.size.ebitda_est_aud is None:
         items.append("verify EBITDA / financials (no estimate yet)")
@@ -75,7 +79,7 @@ def rank_pool(
                 judge_fit=round(jr.fit, 3),
                 judge_rationale=jr.rationale,
                 standout_signals=signals,
-                deferred_assessment=_deferred(record),
+                deferred_assessment=deferred_items(record),
                 judge_unavailable=jr.unavailable,
             )
         )

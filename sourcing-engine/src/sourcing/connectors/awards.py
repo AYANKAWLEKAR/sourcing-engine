@@ -6,13 +6,12 @@ finalist businesses, and yields a curated pool of pre-vetted quality SMBs. Each 
 weighs) and an `AwardSignal`. No ABN — the EntityResolver anchors them downstream, exactly
 like a Google Maps record.
 
-Extraction strategy (tuned for a local CPU model):
+Extraction strategy:
   * **name + state** are pulled *structurally* from the page (``#### {name}`` / ``{state}
     Finalist`` blocks) — verbatim page facts, high confidence.
-  * **category** is determined by **one plain-text LLM call** classifying every finalist's
-    business sector (per direction — LLM-determined, not URL-slug-mapped). Plain text (not
-    JSON mode) is deliberate: grammar-constrained JSON decoding of a ~40-item array is
-    pathologically slow on CPU, while a plain numbered list finishes in ~4 min.
+  * **category** is determined by **one LLM call** classifying every finalist's business
+    sector (per direction — LLM-determined, not URL-slug-mapped), returned as a single JSON
+    object whose ``categories`` list aligns by index to the finalists.
 """
 from __future__ import annotations
 
@@ -31,11 +30,11 @@ if TYPE_CHECKING:
 _FINALIST_RE = re.compile(
     r"####\s*(.+?)\n+\s*([A-Za-z ]+?)\s+Finalist\b\s*\n+(.*?)(?=\n####|\Z)", re.S
 )
-_NUMBERED_RE = re.compile(r"\s*(\d+)[.)]\s*(.+)")
 
 _CLASSIFY_SYSTEM = (
-    "You classify Australian businesses by sector. For each numbered business, output exactly "
-    "one line 'N. <2-4 word business category>' (e.g. '1. electrical contractor'). No other text."
+    "You classify Australian businesses by sector. Respond with ONLY a JSON object "
+    '{"categories": ["<2-4 word category>", ...]} whose list has exactly one entry per '
+    "numbered business, in the same order (e.g. 'electrical contractor')."
 )
 
 
@@ -103,7 +102,6 @@ class AwardRegisterConnector(AgentConnector):
                 if not name:
                     continue
                 state = _norm_state(state)
-                category = _clean_category(category, name)
                 out.append(
                     RawRecord(
                         source_id=self.source_id,
@@ -116,16 +114,24 @@ class AwardRegisterConnector(AgentConnector):
         return out
 
     def _classify_categories(self, blocks: list[tuple[str, str, str]]) -> list[str | None]:
-        """One plain-text LLM call → a business category per finalist (by index)."""
+        """One JSON LLM call → a business category per finalist, aligned by index."""
         from ..config import get_settings
-        from ..llm import complete_text
+        from ..llm import complete_json
 
         listing = "\n".join(
             f"{i + 1}. {name.strip()} — {desc.strip()[:80]}"
             for i, (name, _state, desc) in enumerate(blocks)
         )
-        text = complete_text(self.text_llm, get_settings().enrich_model, _CLASSIFY_SYSTEM, listing)
-        return _parse_numbered(text, len(blocks))
+        data = complete_json(self.text_llm, get_settings().enrich_model, _CLASSIFY_SYSTEM, listing)
+        cats = data.get("categories") if isinstance(data, dict) else None
+        if not isinstance(cats, list):
+            return [None] * len(blocks)
+        out: list[str | None] = []
+        for i in range(len(blocks)):
+            raw = cats[i] if i < len(cats) else None
+            cat = str(raw).strip() if raw else ""
+            out.append(cat or None)
+        return out
 
     # ------------------------------------------------------------------
     # normalize
@@ -198,38 +204,6 @@ class TelstraAwardsConnector(AwardRegisterConnector):
 # ---------------------------------------------------------------------------
 
 _AU_STATES = {"NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"}
-
-
-def _parse_numbered(text: str, n: int) -> list[str | None]:
-    """Parse 'N. category' lines into a length-``n`` list (None where missing)."""
-    out: list[str | None] = [None] * n
-    for line in (text or "").splitlines():
-        m = _NUMBERED_RE.match(line)
-        if not m:
-            continue
-        idx = int(m.group(1)) - 1
-        if 0 <= idx < n:
-            out[idx] = m.group(2).strip() or None
-    return out
-
-
-def _clean_category(category: str | None, name: str) -> str | None:
-    """Strip a business-name echo the model sometimes prefixes to the category.
-
-    qwen non-deterministically returns either "environmental" or "Big Bag Recovery
-    — environmental". We keep the part after an em/en/hyphen or colon separator, and
-    drop a leading copy of the finalist's name.
-    """
-    if not category:
-        return None
-    c = category.strip()
-    for sep in (" — ", " – ", " - ", ": "):
-        if sep in c:
-            c = c.split(sep, 1)[1].strip()
-            break
-    if name and c.lower().startswith(name.lower()):
-        c = c[len(name):].lstrip(" —–-:").strip()
-    return c or None
 
 
 def _norm_state(value: Any) -> str | None:

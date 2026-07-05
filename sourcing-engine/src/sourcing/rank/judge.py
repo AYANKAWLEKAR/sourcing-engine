@@ -2,7 +2,8 @@
 
 Reads the whole CompanyRecord — including moat/award/gov-contract context that
 carries NO statistical weight — and returns a 0–1 fit + a one-line rationale +
-standout signals. Local Ollama/qwen in JSON mode; injectable for offline tests.
+standout signals. One JSON call on the configured ``judge_model`` (Claude by
+default); the LLM client is injectable for offline tests.
 """
 from __future__ import annotations
 
