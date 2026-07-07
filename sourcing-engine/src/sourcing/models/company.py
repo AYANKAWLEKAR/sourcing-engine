@@ -51,6 +51,8 @@ class Ownership(BaseModel):
 
 class MoatSignals(BaseModel):
     ip: bool | None = None
+    ip_count: int | None = None                      # total IP rights across types (IPGOD)
+    ip_types: list[str] = Field(default_factory=list)  # e.g. ["patent", "trademark"]
     gov_contracts: bool = False
     gov_contract_value_aud: int | None = None
     gov_contract_count: int | None = None            # number of AusTender releases

@@ -150,3 +150,83 @@ def test_enrichment_node_skips_unresolved():
                           signal_extractor=SignalExtractor(llm=FakeLLM(_SIGNAL_JSON), model="x"))
     node.enrich_pool([rec], _BUYBOX)
     assert austender.seen == []  # never touched the unresolved record
+
+
+# ---------------------------------------------------------------------------
+# Enrichment node — ASX + IPGOD wiring (free local lookups, step 0)
+# ---------------------------------------------------------------------------
+
+class FakeIPGOD:
+    def __init__(self):
+        self.seen = []
+
+    def enrich_record(self, rec):
+        self.seen.append(rec.abn)
+        rec.moat_signals.ip = True
+        rec.moat_signals.ip_count = 2
+        return rec
+
+
+class FakeASX:
+    def __init__(self):
+        self.seen = []
+
+    def enrich_record(self, rec):
+        self.seen.append(rec.abn)
+        rec.ownership.listed_entity = True
+        return rec
+
+
+class RaisingConnector:
+    def enrich_record(self, rec):
+        raise RuntimeError("boom")
+
+
+def _node(**overrides):
+    kwargs = dict(
+        austender=FakeAusTender(),
+        website=FakeWebsite(),
+        signal_extractor=SignalExtractor(llm=FakeLLM(_SIGNAL_JSON), model="x"),
+    )
+    kwargs.update(overrides)
+    return EnrichmentNode(**kwargs)
+
+
+def _rec():
+    return CompanyRecord(entity_id="x", abn="1" * 11, legal_name="Acme Air",
+                         location=Location(state="QLD"))
+
+
+def test_enrichment_node_calls_asx_and_ipgod():
+    asx, ipgod = FakeASX(), FakeIPGOD()
+    rec = _rec()
+    _node(asx=asx, ipgod=ipgod).enrich_pool([rec], _BUYBOX)
+    assert asx.seen == [rec.abn]
+    assert ipgod.seen == [rec.abn]
+    assert rec.ownership.listed_entity is True
+    assert rec.moat_signals.ip is True
+
+
+def test_enrichment_node_defaults_skip_asx_and_ipgod():
+    node = _node()  # neither injected -> both None -> skipped, no error
+    assert node.asx is None and node.ipgod is None
+    rec = _rec()
+    node.enrich_pool([rec], _BUYBOX)
+    assert rec.ownership.listed_entity is None
+    assert rec.moat_signals.ip is None
+
+
+def test_enrichment_node_asx_failure_flags_and_continues():
+    austender = FakeAusTender()
+    rec = _rec()
+    _node(austender=austender, asx=RaisingConnector()).enrich_pool([rec], _BUYBOX)
+    assert "unverified:listed_entity:asx_lookup_failed" in rec.flags
+    assert austender.seen == [rec.abn]  # waterfall continued
+
+
+def test_enrichment_node_ipgod_failure_flags_and_continues():
+    austender = FakeAusTender()
+    rec = _rec()
+    _node(austender=austender, ipgod=RaisingConnector()).enrich_pool([rec], _BUYBOX)
+    assert "unverified:ip:ipgod_lookup_failed" in rec.flags
+    assert austender.seen == [rec.abn]

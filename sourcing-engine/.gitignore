@@ -17,3 +17,6 @@ data/bulk.duckdb
 
 *.csv
 
+# Downloaded bulk-source archives (ABR bulk extract zips, ~1GB — do not commit)
+data/abn_bulk/
+

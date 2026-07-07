@@ -31,9 +31,13 @@ _TYPE_TO_BASE = {
 }
 
 # Extra constructor kwargs for connectors that need them at instantiation.
+# Paths are synthetic: constructors never touch disk (validated at ensure_loaded).
 _KWARGS = {
     "abn_lookup_api": {"guid": "test-guid"},
     "asic_company_dataset": {"csv_path": "x"},
+    "abn_bulk_extract": {"zip_paths": ["x.zip"], "allow_download": False},
+    "ipgod": {"csv_paths": ["x.csv"]},
+    "asx_listed_list": {"csv_path": "x.csv"},
 }
 
 

@@ -58,6 +58,15 @@ _SPINE_SOURCES: frozenset[str] = frozenset({
     "asic_company_dataset", "abn_bulk_extract",
 })
 
+# Sources that enrich/resolve/screen EXISTING records (by ABN/URL) or return a
+# whole reference table — they do NOT discover new candidates from buy-box
+# params, so they must never run in the discovery sweep. ``abn_bulk_extract`` is
+# here too: it is a resolver fallback (targeted lookup_abn via EntityResolver),
+# never a discovery sweep — sweeping it would load the whole ~20M-row register.
+_ENRICHMENT_SOURCES: frozenset[str] = frozenset({
+    "austender", "website_fetch", "ipgod", "asx_listed_list", "abn_bulk_extract",
+})
+
 _DEFAULT_MAX_PLACES = 50
 
 
@@ -132,8 +141,10 @@ def params_for_connector(
                 tiles.append(p)
         return tiles
 
-    # --- enrichment sources (AusTender, website): no BuyBox params ----------
-    if source_id in {"austender", "website_fetch"}:
+    # --- enrichment sources (AusTender, website, IPGOD, ASX): no BuyBox params
+    # (these are skipped by fetch_all's discovery sweep; params kept for any
+    # direct/targeted call). abn_bulk_extract is handled by the spine branch.
+    if source_id in _ENRICHMENT_SOURCES:
         return [{}]
 
     # --- award registers: pass target states --------------------------------
@@ -192,6 +203,8 @@ class SourcingOrchestrator:
                 continue
             if entry.gate == "shortlist_only":
                 continue  # LinkedIn and similar gated enrichment connectors
+            if item.source_id in _ENRICHMENT_SOURCES:
+                continue  # enrichment/screening/resolver sources run post-discovery
 
             connector = self._get_connector(entry.connector_ref)
             if connector is None:

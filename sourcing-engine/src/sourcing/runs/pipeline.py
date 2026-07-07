@@ -45,7 +45,10 @@ class PipelineComponents:
     @classmethod
     def build_default(cls, settings: Any = None) -> PipelineComponents:
         from ..config import get_settings
+        from ..connectors.abn_bulk import ABNBulkExtractConnector
+        from ..connectors.asx_listed import ASXListedConnector
         from ..connectors.cache import InMemoryTTLCache
+        from ..connectors.ipgod import IPGODConnector
         from ..connectors.website import WebsiteFetchConnector
         from ..enrichment.enrichment_node import EnrichmentNode
         from ..enrichment.entity_resolution import EntityResolver
@@ -63,13 +66,21 @@ class PipelineComponents:
         retriever = SourceRetriever(InMemoryVectorStore(), get_embedding_provider(s))
         retriever.index(registry)
 
+        # Settings-gated bulk lookups: each stays None (skipped) unless its data
+        # is configured, so a default build never demands bulk files be present.
+        abn_bulk = ABNBulkExtractConnector.from_settings() if s.abn_bulk_enabled else None
+        ipgod = IPGODConnector.from_settings() if s.ipgod_csv_paths else None
+        asx = ASXListedConnector.from_settings_if_available()
+
         return cls(
             registry_entries=registry,
             retriever=retriever,
             orchestrator=SourcingOrchestrator(registry),
-            resolver=EntityResolver(),
+            resolver=EntityResolver(abn_bulk=abn_bulk),
             enrichment=EnrichmentNode(
-                website=WebsiteFetchConnector(cache=InMemoryTTLCache())
+                website=WebsiteFetchConnector(cache=InMemoryTTLCache()),
+                ipgod=ipgod,
+                asx=asx,
             ),
             ranker=rank_pool,
             shortlist_gate=ShortlistGate(registry, top_n=s.shortlist_gate_n),
@@ -170,11 +181,13 @@ class RunPipeline:
 
     @staticmethod
     def _close(comp: PipelineComponents) -> None:
-        # EntityResolver holds a DuckDB handle via its ASIC connector.
-        asic = getattr(comp.resolver, "asic", None)
-        close = getattr(asic, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:  # noqa: BLE001 - best-effort cleanup
-                pass
+        # EntityResolver holds DuckDB handles via its ASIC connector and (when
+        # ABN_BULK_ENABLED) the ABN bulk-extract connector.
+        for attr in ("asic", "abn_bulk"):
+            conn = getattr(comp.resolver, attr, None)
+            close = getattr(conn, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:  # noqa: BLE001 - best-effort cleanup
+                    pass

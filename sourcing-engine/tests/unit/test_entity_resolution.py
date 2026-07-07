@@ -130,3 +130,68 @@ def test_enrich_skips_records_that_already_have_abn():
     out = r.enrich(rec)
     assert out.abn == "99999999999"
     assert out.flags == []
+
+
+# ---------------------------------------------------------------------------
+# ABN-bulk fallback (sole traders / trusts with no ASIC row)
+# ---------------------------------------------------------------------------
+
+class FakeABNBulk:
+    def __init__(self, rows_by_abn):
+        self._rows = rows_by_abn
+        self.lookups = []
+
+    def lookup_abn(self, abn):
+        self.lookups.append(abn)
+        return self._rows.get(abn)
+
+
+_CANDIDATE = {"abn": "11111111111", "org_name": "brisbane materials testing",
+              "postcode": "4101", "state": "QLD"}
+
+_BULK_ROW = {"abn": "11111111111", "acn": None, "org_name": "BRISBANE MATERIALS TESTING",
+             "state": "QLD", "postcode": "4101", "entity_type_code": "IND",
+             "status_effective_from": "2005-06-01"}
+
+
+def test_enrich_asic_hit_does_not_consult_abn_bulk():
+    bulk = FakeABNBulk({"11111111111": _BULK_ROW})
+    r = EntityResolver(
+        api=FakeAPI([_CANDIDATE]),
+        asic=FakeASIC({"11111111111": {"acn": "004000001", "org_name": "BMT PTY LTD",
+                                       "status_effective_from": "2005-06-01"}}),
+        abn_bulk=bulk,
+    )
+    rec = r.enrich(_record("Brisbane Materials Testing Pty Ltd", "4101", "QLD"))
+    assert rec.acn == "004000001"          # merged from ASIC
+    assert bulk.lookups == []              # bulk never consulted
+
+
+def test_enrich_asic_miss_merges_abn_bulk_spine():
+    bulk = FakeABNBulk({"11111111111": _BULK_ROW})
+    r = EntityResolver(api=FakeAPI([_CANDIDATE]), asic=FakeASIC({}), abn_bulk=bulk)
+    rec = r.enrich(_record("Brisbane Materials Testing", None, None))
+    assert rec.abn == "11111111111"
+    assert rec.legal_name == "BRISBANE MATERIALS TESTING"
+    assert rec.location.state == "QLD"
+    assert rec.location.postcode == "4101"
+    assert rec.age.abn_registered == "2005-06-01"
+    assert rec.ownership.structure_guess == "sole-trader"
+    assert any(p.source == "abn_bulk_extract" for p in rec.provenance)
+
+
+def test_enrich_asic_miss_no_bulk_wired_unchanged():
+    r = EntityResolver(api=FakeAPI([_CANDIDATE]), asic=FakeASIC({}))
+    assert r.abn_bulk is None
+    rec = r.enrich(_record("Brisbane Materials Testing", "4101", "QLD"))
+    assert rec.abn == "11111111111"        # resolution still works
+    assert all(p.source != "abn_bulk_extract" for p in rec.provenance)
+
+
+def test_enrich_both_miss_no_crash_no_spurious_provenance():
+    bulk = FakeABNBulk({})
+    r = EntityResolver(api=FakeAPI([_CANDIDATE]), asic=FakeASIC({}), abn_bulk=bulk)
+    rec = r.enrich(_record("Brisbane Materials Testing", "4101", "QLD"))
+    assert rec.abn == "11111111111"
+    assert bulk.lookups == ["11111111111"]
+    assert all(p.source != "abn_bulk_extract" for p in rec.provenance)

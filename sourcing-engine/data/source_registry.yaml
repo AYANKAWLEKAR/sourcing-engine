@@ -6,7 +6,10 @@
 sources:
   - source_id: abn_bulk_extract
     connector_type: bulk
-    fields_provided: [country, state, years_operating, anzsic_code]
+    # The public bulk extract carries names, entity type, status, dates, and
+    # business address — but NO ANZSIC/industry codes (those never made it into
+    # the public files; sector signals come from text/category sources).
+    fields_provided: [country, state, postcode, years_operating, entity_type, trading_names]
     sectors_covered: [all]
     geo_granularity: postcode
     join_key: abn
@@ -14,19 +17,22 @@ sources:
     freshness: weekly
     reliability: structured_high
     enabled: true
-    connector_ref: connectors.abn.BulkABNConnector
+    connector_built: true
+    connector_ref: sourcing.connectors.abn_bulk.ABNBulkExtractConnector
     capability_doc: >
       Australian Business Register bulk extract. Identifies every registered
       Australian business with its ABN, legal and trading names, entity type,
-      registration date (business age and years operating), and location down to
-      state and postcode across NSW VIC QLD SA WA TAS NT ACT. The structured spine
-      for reach across all sectors and for hard geographic and age filters.
+      registration date (business age and years operating), and operating location
+      down to state and postcode across NSW VIC QLD SA WA TAS NT ACT. Covers sole
+      traders, partnerships and trusts that have no ASIC company row. The
+      structured spine for reach across all sectors and for hard geographic and
+      age filters.
 
   - source_id: abn_lookup_api
     connector_type: api
     # The live API returns entity name, type, status, state, postcode, and
-    # registration date. ANZSIC codes are NOT returned by the API — they come
-    # from the bulk XML extract (abn_bulk_extract) which includes ANZSIC.
+    # registration date. ANZSIC codes are NOT returned by the API — nor by the
+    # public bulk extract; sector comes from text/category sources.
     fields_provided: [country, state, years_operating, ownership_structure]
     sectors_covered: [all]
     geo_granularity: postcode
@@ -66,19 +72,22 @@ sources:
       checks across all sectors in Australia.
 
   - source_id: asx_listed_list
-    connector_type: api
+    connector_type: bulk
     fields_provided: [listed_entity]
     sectors_covered: [all]
     geo_granularity: national
-    join_key: acn
+    join_key: name
     cost_tier: free
-    freshness: daily
+    freshness: monthly
     reliability: structured_high
     enabled: true
-    connector_ref: connectors.asx.ASXListedConnector
+    connector_built: true
+    connector_ref: sourcing.connectors.asx_listed.ASXListedConnector
     capability_doc: >
-      ASX listed companies list. The daily roster of publicly listed Australian
-      companies by name and ACN, used to detect and exclude listed entities.
+      ASX listed companies directory (manual CSV export from asx.com.au). The
+      roster of publicly listed Australian companies matched by normalized name
+      (and by ACN when the export carries it), used to detect and exclude listed
+      entities in screening.
 
   - source_id: crunchbase
     connector_type: api
@@ -170,7 +179,10 @@ sources:
 
   - source_id: ipgod
     connector_type: bulk
-    fields_provided: [ai_disruption_risk]
+    fields_provided:
+      - moat_signals.ip
+      - moat_signals.ip_count
+      - moat_signals.ip_types
     sectors_covered: [all]
     geo_granularity: national
     join_key: abn
@@ -178,10 +190,13 @@ sources:
     freshness: annual
     reliability: structured_medium
     enabled: true
-    connector_ref: connectors.ipgod.IPGODConnector
+    gate: full_pool
+    connector_built: true
+    connector_ref: sourcing.connectors.ipgod.IPGODConnector
     capability_doc: >
-      IP Government Open Data (IPGOD). Patents, trademarks and designs by applicant
-      ABN, used as an intellectual-property moat signal for AI-disruption resilience.
+      IP Government Open Data (IPGOD). Patents, trademarks, designs and plant
+      breeder's rights by applicant ABN — a direct authoritative join used as an
+      intellectual-property moat signal for AI-disruption resilience.
 
   - source_id: austender
     connector_type: api

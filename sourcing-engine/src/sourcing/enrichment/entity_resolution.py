@@ -9,6 +9,11 @@ ASIC (which carries the ABN at 100% coverage).
 Adapted to this repo's RawRecord shape: ABN Lookup name-match candidates expose
 ``org_name`` / ``state`` / ``postcode`` / ``abn`` (Score lives in ``raw``); the
 ASIC spine row exposes ``acn`` / ``org_name`` / ``status_effective_from``.
+
+When ``ABN_BULK_ENABLED=true`` (or an ``abn_bulk`` connector is injected), ABNs
+with no ASIC company row — sole traders, partnerships, trusts — fall back to the
+ABR bulk extract for their spine merge (name, operating state/postcode,
+registration date, structure guess).
 """
 from __future__ import annotations
 
@@ -27,7 +32,7 @@ KEEP_THRESHOLD = 0.60
 
 
 class EntityResolver:
-    def __init__(self, api: Any = None, asic: Any = None) -> None:
+    def __init__(self, api: Any = None, asic: Any = None, abn_bulk: Any = None) -> None:
         # Lazy construction so importing this module needs no credentials.
         if api is None:
             from ..connectors.abn.lookup import ABNLookupAPIConnector
@@ -39,6 +44,10 @@ class EntityResolver:
             asic = ASICBulkConnector.from_settings()
         self.api = api
         self.asic = asic
+        # None → no fallback. Production wires the ABR bulk-extract connector in
+        # runs/pipeline.build_default, gated on ABN_BULK_ENABLED (the extract is
+        # a ~1.7GB download — never auto-wired by construction alone).
+        self.abn_bulk = abn_bulk
 
     # ------------------------------------------------------------------
     # Name → ABN resolution
@@ -124,4 +133,29 @@ class EntityResolver:
             record.provenance.append(
                 Provenance(field="legal_name", source="asic_company_dataset", confidence=0.95)
             )
+        elif self.abn_bulk is not None:
+            # Sole traders / partnerships / trusts carry a valid ABN but no ASIC
+            # company row — the ABR bulk extract is their spine.
+            bulk = self.abn_bulk.lookup_abn(abn)
+            if bulk:
+                from ..connectors.abn.parser import _STRUCTURE_MAP
+
+                record.legal_name = bulk.get("org_name") or record.legal_name
+                record.acn = record.acn or (bulk.get("acn") or None)
+                if not record.location.state and bulk.get("state"):
+                    record.location.state = bulk["state"]
+                if not record.location.postcode and bulk.get("postcode"):
+                    record.location.postcode = bulk["postcode"]
+                record.age.abn_registered = (
+                    record.age.abn_registered or bulk.get("status_effective_from")
+                )
+                type_code = (bulk.get("entity_type_code") or "").upper()
+                if type_code and not record.ownership.structure_guess:
+                    record.ownership.structure_guess = _STRUCTURE_MAP.get(type_code)
+                record.provenance.append(
+                    Provenance(field="abn", source="abn_lookup_api", confidence=round(rc, 3))
+                )
+                record.provenance.append(
+                    Provenance(field="legal_name", source="abn_bulk_extract", confidence=0.95)
+                )
         return record

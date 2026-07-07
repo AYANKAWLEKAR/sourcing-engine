@@ -1,12 +1,16 @@
 """EnrichmentNode — the per-record waterfall over the resolved pool (plan §2.3 + addendum §5).
 
 Order per record (cheap/free first):
+  0. ASX listed check + IPGOD IP moat — free local DuckDB lookups
   1. AusTender — free direct-ABN gov-contract signal (full-pool sweep)
   2. Website text → SignalExtractor (qwen) — sector, model, ANZSIC, moat
 LinkedIn + proxy estimator stay deferred behind the shortlist gate (not here).
 
 Every component is injectable so the node unit-tests offline with fakes; nothing
 is fabricated — unfillable fields get an ``unverified:*`` flag with a reason.
+``ipgod``/``asx`` default to None (skipped) so constructing the node never
+touches bulk data; production wires them in ``runs/pipeline.build_default``,
+gated on their settings paths resolving.
 """
 from __future__ import annotations
 
@@ -27,6 +31,8 @@ class EnrichmentNode:
         austender: Any = None,
         website: Any = None,
         signal_extractor: SignalExtractor | None = None,
+        ipgod: Any = None,
+        asx: Any = None,
     ):
         # Lazy defaults so importing needs no credentials; callers inject fakes in tests.
         if austender is None:
@@ -36,6 +42,8 @@ class EnrichmentNode:
         self.austender = austender
         self.website = website  # None → skip live text fetch (use existing text)
         self.signal_extractor = signal_extractor or SignalExtractor()
+        self.ipgod = ipgod  # None → skip IP moat lookup
+        self.asx = asx      # None → skip listed-entity check
 
     def enrich_pool(
         self,
@@ -76,6 +84,21 @@ class EnrichmentNode:
         return pool
 
     def enrich_one(self, rec: CompanyRecord, buybox: BuyBox) -> CompanyRecord:
+        # 0a. ASX listed check — free local lookup; makes the listed_entity
+        #     EXCLUDE fire on an explicit match (never writes False on a miss).
+        if self.asx is not None:
+            try:
+                self.asx.enrich_record(rec)
+            except Exception:
+                rec.flags.append("unverified:listed_entity:asx_lookup_failed")
+
+        # 0b. IPGOD IP moat — free local direct-ABN lookup.
+        if self.ipgod is not None:
+            try:
+                self.ipgod.enrich_record(rec)
+            except Exception:
+                rec.flags.append("unverified:ip:ipgod_lookup_failed")
+
         # 1. AusTender — cheap, free, direct ABN join
         self.austender.enrich_record(rec)
 

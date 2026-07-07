@@ -53,10 +53,35 @@ class Settings(BaseSettings):
     # local dev/test, point at a downloaded copy.
     asic_csv_path: str = ""
 
+    # ABN bulk extract (data.gov.au ABR): two zips (public_split_1_10.zip,
+    # public_split_11_20.zip) under abn_bulk_dir (default data/abn_bulk).
+    abn_bulk_dir: str = ""
+    abn_bulk_download: bool = False  # allow live CKAN download when zips absent (~1.7GB)
+    abn_bulk_enabled: bool = False   # wire the ABN-bulk fallback into EntityResolver
+
+    # IPGOD applicant CSVs, comma-separated; ip_type inferred from each filename.
+    ipgod_csv_paths: str = ""
+
+    # ASX listed-companies CSV; empty -> newest data/ASX_Listed_Companies_*.csv.
+    asx_csv_path: str = ""
+
     @model_validator(mode="after")
     def _resolve_relative_paths(self) -> Settings:
         if self.asic_csv_path and not Path(self.asic_csv_path).is_absolute():
             self.asic_csv_path = str(REPO_ROOT / self.asic_csv_path)
+        if self.abn_bulk_dir and not Path(self.abn_bulk_dir).is_absolute():
+            self.abn_bulk_dir = str(REPO_ROOT / self.abn_bulk_dir)
+        if self.asx_csv_path and not Path(self.asx_csv_path).is_absolute():
+            self.asx_csv_path = str(REPO_ROOT / self.asx_csv_path)
+        if self.ipgod_csv_paths:
+            resolved = []
+            for p in self.ipgod_csv_paths.split(","):
+                p = p.strip()
+                if p and not Path(p).is_absolute():
+                    p = str(REPO_ROOT / p)
+                if p:
+                    resolved.append(p)
+            self.ipgod_csv_paths = ",".join(resolved)
         return self
 
     # AusTender enrichment window (Fix 12: raised to 2 years; 180 days missed

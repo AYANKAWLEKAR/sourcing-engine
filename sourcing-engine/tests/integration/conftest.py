@@ -90,3 +90,55 @@ def require_apify_token():
     if not s.apify_api_token:
         pytest.skip("APIFY_API_TOKEN not set in .env (required for live scrape tests).")
     return s.apify_api_token
+
+
+@pytest.fixture(scope="session")
+def require_abn_bulk_zips():
+    """Skip unless the pre-downloaded ABR bulk zips are present.
+
+    Env ``ABN_BULK_ZIP_DIR`` overrides ``settings.abn_bulk_dir`` (default
+    data/abn_bulk). The live CKAN download is exercised separately (opt-in via
+    ``ABN_BULK_ALLOW_DOWNLOAD`` in test_abn_bulk.py) — this fixture never
+    triggers a 1.7GB download.
+    """
+    import os
+    from pathlib import Path
+
+    d = os.environ.get("ABN_BULK_ZIP_DIR") or get_settings().abn_bulk_dir or str(
+        REPO_ROOT / "data" / "abn_bulk"
+    )
+    zips = sorted(Path(d).glob("public_split_*.zip"))
+    if not zips:
+        pytest.skip(
+            "ABN bulk zips not present (download public_split_*.zip from "
+            "data.gov.au into data/abn_bulk/ or set ABN_BULK_ZIP_DIR)."
+        )
+    return [str(z) for z in zips]
+
+
+@pytest.fixture(scope="session")
+def require_ipgod_csvs():
+    """Skip unless IPGOD_CSV_PATHS points at existing applicant CSVs."""
+    from pathlib import Path
+
+    s = get_settings()
+    paths = [p.strip() for p in (s.ipgod_csv_paths or "").split(",") if p.strip()]
+    if not paths or not all(Path(p).exists() for p in paths):
+        pytest.skip("IPGOD_CSV_PATHS not set / file(s) missing (required for IPGOD tests).")
+    return paths
+
+
+@pytest.fixture(scope="session")
+def require_asx_csv():
+    """Skip unless an ASX listed-companies CSV resolves (setting or data/ glob)."""
+    from pathlib import Path
+
+    s = get_settings()
+    if s.asx_csv_path and Path(s.asx_csv_path).exists():
+        return s.asx_csv_path
+    candidates = sorted((REPO_ROOT / "data").glob("ASX_Listed_Companies_*.csv"))
+    if not candidates:
+        pytest.skip(
+            "ASX CSV not present (download from asx.com.au into data/ or set ASX_CSV_PATH)."
+        )
+    return str(candidates[-1])

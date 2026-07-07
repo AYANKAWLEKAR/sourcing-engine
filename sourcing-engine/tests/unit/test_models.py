@@ -102,3 +102,17 @@ def test_source_registry_entry_roundtrip_and_meta():
     assert again.source_id == "s1"
     assert e.meta["enabled"] is True
     assert e.meta["fields_provided"] == ["country", "state"]
+
+
+def test_moat_signals_ip_fields_roundtrip():
+    from sourcing.models.company import MoatSignals
+
+    ms = MoatSignals(ip=True, ip_count=3, ip_types=["patent", "trademark"])
+    again = MoatSignals(**ms.model_dump())
+    assert again.ip_count == 3
+    assert again.ip_types == ["patent", "trademark"]
+    # Defaults: unknown, not zero/False.
+    blank = MoatSignals()
+    assert blank.ip is None
+    assert blank.ip_count is None
+    assert blank.ip_types == []
