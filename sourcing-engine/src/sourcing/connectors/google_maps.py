@@ -35,10 +35,16 @@ class GoogleMapsConnector(ScrapeConnector):
         terms = params.get("search_terms") or params.get("searchStringsArray") or []
         if isinstance(terms, str):
             terms = [terms]
+        terms = list(terms)
+        per_search = int(params.get("max_places", 50))
+        # Total ceiling across ALL search terms. maxCrawledPlacesPerSearch alone
+        # caps per term, so N terms crawl N×per_search — this bounds the whole run.
+        total_cap = per_search * max(1, len(terms))
         return {
-            "searchStringsArray": list(terms),
+            "searchStringsArray": terms,
             "locationQuery": params.get("location", ""),
-            "maxCrawledPlacesPerSearch": int(params.get("max_places", 50)),
+            "maxCrawledPlacesPerSearch": per_search,
+            "maxCrawledPlaces": total_cap,
             "language": "en",
             "countryCode": "au",  # actor requires lowercase ISO-3166
             "scrapeContacts": False,

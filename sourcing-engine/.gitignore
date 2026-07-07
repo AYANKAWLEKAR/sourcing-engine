@@ -20,3 +20,7 @@ data/bulk.duckdb
 # Downloaded bulk-source archives (ABR bulk extract zips, ~1GB — do not commit)
 data/abn_bulk/
 
+# Persistent connector / CompanyRecord cache (regenerable; can be large)
+*.sqlite
+data/cache.sqlite
+

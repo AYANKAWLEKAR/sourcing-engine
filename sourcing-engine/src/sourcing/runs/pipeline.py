@@ -47,7 +47,6 @@ class PipelineComponents:
         from ..config import get_settings
         from ..connectors.abn_bulk import ABNBulkExtractConnector
         from ..connectors.asx_listed import ASXListedConnector
-        from ..connectors.cache import InMemoryTTLCache
         from ..connectors.ipgod import IPGODConnector
         from ..connectors.website import WebsiteFetchConnector
         from ..enrichment.enrichment_node import EnrichmentNode
@@ -71,6 +70,13 @@ class PipelineComponents:
         abn_bulk = ABNBulkExtractConnector.from_settings() if s.abn_bulk_enabled else None
         ipgod = IPGODConnector.from_settings() if s.ipgod_csv_paths else None
         asx = ASXListedConnector.from_settings_if_available()
+        # Persistent ABN-keyed enrichment cache (None unless cache_backend=sqlite).
+        from ..enrichment.record_cache import CompanyRecordCache
+
+        record_cache = CompanyRecordCache.from_settings()
+        # Website fetch shares the process default cache (persistent when
+        # cache_backend=sqlite), so repeat runs don't re-bill the same URLs.
+        from ..connectors.cache import get_default_cache
 
         return cls(
             registry_entries=registry,
@@ -78,9 +84,10 @@ class PipelineComponents:
             orchestrator=SourcingOrchestrator(registry),
             resolver=EntityResolver(abn_bulk=abn_bulk),
             enrichment=EnrichmentNode(
-                website=WebsiteFetchConnector(cache=InMemoryTTLCache()),
+                website=WebsiteFetchConnector(cache=get_default_cache()),
                 ipgod=ipgod,
                 asx=asx,
+                record_cache=record_cache,
             ),
             ranker=rank_pool,
             shortlist_gate=ShortlistGate(registry, top_n=s.shortlist_gate_n),

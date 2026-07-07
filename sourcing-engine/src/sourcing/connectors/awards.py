@@ -156,7 +156,7 @@ class AwardRegisterConnector(AgentConnector):
 
         signal = AwardSignal(
             program=self.program, tier=self.tier, year=year,
-            category=category, state=state, level="finalist",
+            category=category, state=state, level=info.get("level", "finalist"),
         )
         return CompanyRecord(
             entity_id=f"award:{self.program_key}:{_slug(name)}",
@@ -174,6 +174,108 @@ class AwardRegisterConnector(AgentConnector):
                 Provenance(field="sector", source=self.source_id, locator=url, confidence=0.5),
             ],
         )
+
+
+_TRADES_EXTRACT_SYSTEM = (
+    "You extract award finalists and winners from a page about the Australian "
+    "Trades Small Business Champion Awards. Respond with ONLY a JSON object "
+    '{"businesses": [{"name": "<business name>", "state": '
+    '"NSW|VIC|QLD|SA|WA|TAS|NT|ACT", "category": "<trade, e.g. plumbing, '
+    'electrical, air conditioning, building, carpentry>", "level": '
+    '"winner|finalist"}]}. Convert full state names to the abbreviation. Include '
+    "only businesses explicitly listed as finalists or winners; skip sponsors, "
+    "presenters, judges, and article authors. Return an empty list if none."
+)
+
+
+class TradesChampionConnector(AwardRegisterConnector):
+    """Australian Trades Small Business Champion Awards — tier-1 trade register.
+
+    A discovery source of pre-vetted trade SMBs (plumbing, electrical, HVAC,
+    building) — the exact sectors Origo's buy-boxes target. Finalists live on the
+    official register (``championawards.com.au/trades/...``, rendered as tables)
+    and in trade-press coverage; both are fetched as markdown and parsed by one
+    JSON LLM extraction per page (page layouts vary too much for a single regex,
+    unlike Telstra's structured finalist blocks). The trade *is* the sector hint,
+    so no separate classification call is needed.
+    """
+
+    source_id: str = "trades_champion"
+    program: str = "Australian Trades Small Business Champion"
+    program_key: str = "trades_champion"
+    tier: int = 1
+    default_year: int = 2025
+    # Full finalist/winner article URLs (pages span several domains, not base+slug).
+    #
+    # Sourcing note (verified live): the official championawards.com.au register is
+    # a JS SPA that rag-web-browser can't render, and the trade-press *tag* pages
+    # return empty — but the annual trade-press finalist-announcement *articles* do
+    # render, and one such article lists finalists across every trade category
+    # (~60 businesses, name + state). These URLs change each year (annual awards);
+    # refresh them yearly or pass current ones via ``params["urls"]``. Cached 30
+    # days, so a run re-fetches at most once a month.
+    finalist_urls: tuple[str, ...] = (
+        "https://electricalconnection.com.au/australian-trades-small-business-champion-awards-reveals-2024-finalists/",
+        "https://www.fmmedia.com.au/sectors/high-calibre-of-finalists-for-australian-trades-small-business-champion-awards/",
+    )
+
+    def fetch(self, params: dict) -> list[RawRecord]:
+        """``params``: ``{"year"?: int, "urls"?: [url, ...]}``."""
+        from ..connectors.protocol import RawRecord
+
+        year = int(params.get("year", self.default_year))
+        urls = params.get("urls") or self.finalist_urls
+
+        seen: set[tuple[str, str | None]] = set()
+        out: list[RawRecord] = []
+        for url in urls:
+            md = self._fetch_page_markdown(url)
+            if not md:
+                continue
+            businesses = self._extract_businesses(md)
+            if len(md) > 500 and not businesses:
+                warnings.warn(
+                    f"trades_champion_extraction_empty: {url} returned "
+                    f"{len(md)} chars of markdown but no finalists were extracted "
+                    "(page layout may have changed or the page was blocked).",
+                    stacklevel=2,
+                )
+            for biz in businesses[: self.max_finalists]:
+                name = str(biz.get("name") or "").strip()
+                if not name:
+                    continue
+                state = _norm_state(biz.get("state"))
+                key = (name.lower(), state)
+                if key in seen:
+                    continue
+                seen.add(key)
+                level = "winner" if str(biz.get("level", "")).lower().startswith("win") else "finalist"
+                out.append(
+                    RawRecord(
+                        source_id=self.source_id,
+                        org_name=name,
+                        state=state,
+                        raw={
+                            "name": name, "state": state,
+                            "category": str(biz.get("category") or "").strip() or None,
+                            "level": level, "program": self.program,
+                            "tier": self.tier, "year": year, "url": url,
+                        },
+                    )
+                )
+        return out
+
+    def _extract_businesses(self, markdown: str) -> list[dict]:
+        """One JSON LLM call → the finalists/winners listed on the page."""
+        from ..config import get_settings
+        from ..llm import complete_json
+
+        data = complete_json(
+            self.text_llm, get_settings().enrich_model,
+            _TRADES_EXTRACT_SYSTEM, markdown[:8000],
+        )
+        biz = data.get("businesses") if isinstance(data, dict) else None
+        return biz if isinstance(biz, list) else []
 
 
 class TelstraAwardsConnector(AwardRegisterConnector):
@@ -205,9 +307,16 @@ class TelstraAwardsConnector(AwardRegisterConnector):
 
 _AU_STATES = {"NSW", "VIC", "QLD", "SA", "WA", "TAS", "NT", "ACT"}
 
+_STATE_FULL = {
+    "NEW SOUTH WALES": "NSW", "VICTORIA": "VIC", "QUEENSLAND": "QLD",
+    "SOUTH AUSTRALIA": "SA", "WESTERN AUSTRALIA": "WA", "TASMANIA": "TAS",
+    "NORTHERN TERRITORY": "NT", "AUSTRALIAN CAPITAL TERRITORY": "ACT",
+}
+
 
 def _norm_state(value: Any) -> str | None:
     s = str(value or "").strip().upper()
+    s = _STATE_FULL.get(s, s)
     return s if s in _AU_STATES else None
 
 

@@ -39,6 +39,11 @@ class ScrapeConnector:
     actor_id: str = ""
     cache_ttl_seconds: int = 30 * 24 * 3600
     gate: str | None = None
+    # Per-run wall-clock ceiling (actor self-aborts past it). None → use the
+    # configured default (settings.scrape_actor_timeout_secs). A slow/broad
+    # scrape thus can't block a run indefinitely — it returns whatever it
+    # crawled before the timeout.
+    actor_timeout_secs: int | None = None
 
     def __init__(self, *, cache: Cache | None = None, client: Any = None) -> None:
         self._cache = cache if cache is not None else get_default_cache()
@@ -73,7 +78,24 @@ class ScrapeConnector:
 
         # logger=None disables the actor's streamed-log background thread (noisy,
         # and it raises a cosmetic timeout warning on run completion).
-        run = self._client.actor(self.actor_id).call(run_input=actor_input, logger=None)
+        # run_timeout bounds the actor run itself so a slow/broad crawl can't
+        # block the pipeline (the run aborts and we take its partial dataset).
+        timeout = self.actor_timeout_secs
+        if timeout is None:
+            from ..config import get_settings
+
+            timeout = get_settings().scrape_actor_timeout_secs
+        actor = self._client.actor(self.actor_id)
+        try:
+            from datetime import timedelta
+
+            run = actor.call(
+                run_input=actor_input, logger=None,
+                run_timeout=timedelta(seconds=timeout),
+            )
+        except TypeError:
+            # apify-client version without run_timeout — proceed without a cap.
+            run = actor.call(run_input=actor_input, logger=None)
         # apify-client 3.x returns a typed Run model (``default_dataset_id``);
         # older clients / test fakes return a dict (``defaultDatasetId``).
         dataset_id = getattr(run, "default_dataset_id", None)

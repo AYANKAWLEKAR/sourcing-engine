@@ -33,6 +33,7 @@ class EnrichmentNode:
         signal_extractor: SignalExtractor | None = None,
         ipgod: Any = None,
         asx: Any = None,
+        record_cache: Any = None,
     ):
         # Lazy defaults so importing needs no credentials; callers inject fakes in tests.
         if austender is None:
@@ -44,6 +45,8 @@ class EnrichmentNode:
         self.signal_extractor = signal_extractor or SignalExtractor()
         self.ipgod = ipgod  # None → skip IP moat lookup
         self.asx = asx      # None → skip listed-entity check
+        # None → no persistent record cache (external calls always run).
+        self.record_cache = record_cache
 
     def enrich_pool(
         self,
@@ -84,42 +87,63 @@ class EnrichmentNode:
         return pool
 
     def enrich_one(self, rec: CompanyRecord, buybox: BuyBox) -> CompanyRecord:
-        # 0a. ASX listed check — free local lookup; makes the listed_entity
-        #     EXCLUDE fire on an explicit match (never writes False on a miss).
-        if self.asx is not None:
-            try:
-                self.asx.enrich_record(rec)
-            except Exception:
-                rec.flags.append("unverified:listed_entity:asx_lookup_failed")
+        # Cache hit: reuse a prior run's external-source enrichment for this ABN
+        # (website text + IPGOD/AusTender/ASX signals) and skip the Apify website
+        # fetch + the AusTender scan. Keyword extraction still re-runs below
+        # against the cached text, so the current buy-box scores correctly.
+        cache_hit = False
+        if self.record_cache is not None and rec.abn:
+            cached = self.record_cache.get(rec.abn)
+            if cached is not None:
+                from .record_cache import apply_cached_enrichment
 
-        # 0b. IPGOD IP moat — free local direct-ABN lookup.
-        if self.ipgod is not None:
-            try:
-                self.ipgod.enrich_record(rec)
-            except Exception:
-                rec.flags.append("unverified:ip:ipgod_lookup_failed")
+                apply_cached_enrichment(rec, cached)
+                rec.flags.append("enrichment_cache_hit")
+                cache_hit = True
 
-        # 1. AusTender — cheap, free, direct ABN join
-        self.austender.enrich_record(rec)
+        if not cache_hit:
+            # 0a. ASX listed check — free local lookup; makes the listed_entity
+            #     EXCLUDE fire on an explicit match (never writes False on a miss).
+            if self.asx is not None:
+                try:
+                    self.asx.enrich_record(rec)
+                except Exception:
+                    rec.flags.append("unverified:listed_entity:asx_lookup_failed")
 
-        # 2. Website text → signal extraction (qwen)
-        website = rec.contacts_min.get("website")
-        if website and not rec.website_text_raw and self.website is not None:
-            try:
-                items = self.website.fetch({"url": website})
-                if items:
-                    # Fix 10: call normalize() to honour the SourceConnector contract
-                    # rather than reading raw Apify keys directly.  WebsiteFetchConnector
-                    # stores text in deferred_assessment["website_text_raw"].
-                    first = items[0]
-                    normalized = self.website.normalize(first)
-                    rec.website_text_raw = (
-                        normalized.website_text_raw
-                        or normalized.deferred_assessment.get("website_text_raw")
-                        or ""
-                    )
-            except Exception:
-                rec.flags.append("unverified:sector:website_fetch_failed")
+            # 0b. IPGOD IP moat — free local direct-ABN lookup.
+            if self.ipgod is not None:
+                try:
+                    self.ipgod.enrich_record(rec)
+                except Exception:
+                    rec.flags.append("unverified:ip:ipgod_lookup_failed")
 
+            # 1. AusTender — cheap, free, direct ABN join
+            self.austender.enrich_record(rec)
+
+            # 2. Website text (Apify) — the expensive external call the cache saves.
+            website = rec.contacts_min.get("website")
+            if website and not rec.website_text_raw and self.website is not None:
+                try:
+                    items = self.website.fetch({"url": website})
+                    if items:
+                        # Fix 10: call normalize() to honour the SourceConnector contract
+                        # rather than reading raw Apify keys directly.  WebsiteFetchConnector
+                        # stores text in deferred_assessment["website_text_raw"].
+                        first = items[0]
+                        normalized = self.website.normalize(first)
+                        rec.website_text_raw = (
+                            normalized.website_text_raw
+                            or normalized.deferred_assessment.get("website_text_raw")
+                            or ""
+                        )
+                except Exception:
+                    rec.flags.append("unverified:sector:website_fetch_failed")
+
+        # Signal extraction always runs (cheap, buy-box-specific; uses cached or
+        # freshly fetched website text — no network).
         self.signal_extractor.extract(rec, buybox)
+
+        # Persist the enriched record for reuse on the next run.
+        if self.record_cache is not None and rec.abn and not cache_hit:
+            self.record_cache.put(rec)
         return rec

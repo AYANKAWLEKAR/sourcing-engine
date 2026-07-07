@@ -305,3 +305,24 @@ sources:
       award-finalist Australian SMBs by state, with an LLM-classified business category
       and a tier-1 award-finalist quality signal. Finalists are pre-vetted quality
       businesses used as an off-market discovery entry point.
+
+  - source_id: trades_champion
+    connector_type: agent
+    fields_provided: [moat_signals.award_finalist]
+    sectors_covered: [trades, plumbing, electrical, hvac, building, construction]
+    geo_granularity: state
+    join_key: name
+    cost_tier: metered
+    freshness: annual
+    reliability: text_medium
+    enabled: true
+    gate: full_pool
+    connector_built: true
+    actor_id: apify/rag-web-browser
+    connector_ref: sourcing.connectors.awards.TradesChampionConnector
+    capability_doc: >
+      Australian Trades Small Business Champion Awards finalist and winner register.
+      A curated discovery source of pre-vetted trade SMBs — plumbing, electrical,
+      air conditioning and HVAC, building and construction — by state. The trade
+      category is the sector hint, and finalist/winner status is a tier-1 quality
+      moat signal. High-value off-market entry point for trade-sector buy-boxes.

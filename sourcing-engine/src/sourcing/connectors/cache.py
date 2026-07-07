@@ -62,6 +62,56 @@ class InMemoryTTLCache:
         self._store.clear()
 
 
+class SqliteCache:
+    """Persistent, cross-run TTL cache backed by a local SQLite file.
+
+    Unlike ``InMemoryTTLCache`` (lost when the process exits), this survives
+    across separate CLI runs, so an identical Apify/website request inside its
+    TTL is served from disk instead of re-billing the actor. Uses wall-clock time
+    (persists across restarts) and a lock so the enrichment thread-pool can share
+    one instance safely.
+    """
+
+    def __init__(self, path: str, *, clock: Any = time.time) -> None:
+        import sqlite3
+        import threading
+        from pathlib import Path
+
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._conn = sqlite3.connect(path, check_same_thread=False)
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS kv_cache "
+            "(key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at REAL NOT NULL)"
+        )
+        self._conn.commit()
+
+    def get(self, key: str) -> Any | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value, expires_at FROM kv_cache WHERE key = ?", (key,)
+            ).fetchone()
+            if row is None:
+                return None
+            value, expires_at = row
+            if self._clock() >= expires_at:
+                self._conn.execute("DELETE FROM kv_cache WHERE key = ?", (key,))
+                self._conn.commit()
+                return None
+            return json.loads(value)
+
+    def set(self, key: str, value: Any, ttl_seconds: int) -> None:
+        blob = json.dumps(value, default=str)
+        expires_at = self._clock() + ttl_seconds
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO kv_cache (key, value, expires_at) VALUES (?, ?, ?)",
+                (key, blob, expires_at),
+            )
+            self._conn.commit()
+
+
 class RedisCache:
     """Redis-backed cache. Only used when ``redis`` is installed + configured.
 
@@ -89,7 +139,12 @@ _default_cache: Cache | None = None
 
 
 def get_default_cache() -> Cache:
-    """Return a process-level shared cache (Redis if configured, else in-memory)."""
+    """Return a process-level shared cache.
+
+    Backend precedence: explicit ``REDIS_URL`` → Redis; else
+    ``settings.cache_backend`` selects ``sqlite`` (persistent across runs) or
+    ``memory`` (default). Falls back to in-memory if a backend can't be built.
+    """
     global _default_cache
     import os
 
@@ -103,6 +158,19 @@ def get_default_cache() -> Cache:
             return _default_cache
         except Exception:
             pass
+
+    try:
+        from ..config import get_settings
+
+        settings = get_settings()
+        if settings.cache_backend == "sqlite":
+            _default_cache = SqliteCache(settings.cache_path)
+            return _default_cache
+        if settings.cache_backend == "redis" and getattr(settings, "redis_url", ""):
+            _default_cache = RedisCache(settings.redis_url)
+            return _default_cache
+    except Exception:
+        pass
 
     _default_cache = InMemoryTTLCache()
     return _default_cache

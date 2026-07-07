@@ -150,3 +150,64 @@ def test_linkedin_is_shortlist_gated():
                                   WebsiteFetchConnector, LinkedInHeadcountConnector])
 def test_scrape_connectors_have_actor_and_source_ids(conn):
     assert conn.actor_id and conn.source_id
+
+
+# ---------------------------------------------------------------------------
+# Scrape bounding: total-places cap, term-count cap, actor timeout
+# ---------------------------------------------------------------------------
+
+class TestScrapeCaps:
+    def test_maps_total_places_cap_scales_with_terms(self):
+        c = GoogleMapsConnector(cache=InMemoryTTLCache())
+        inp = c.build_input({"search_terms": ["a", "b", "c"], "max_places": 10, "location": "QLD"})
+        assert inp["maxCrawledPlacesPerSearch"] == 10
+        assert inp["maxCrawledPlaces"] == 30  # per-search 10 × 3 terms
+
+    def test_maps_total_cap_single_term(self):
+        c = GoogleMapsConnector(cache=InMemoryTTLCache())
+        inp = c.build_input({"search_terms": ["hvac"], "max_places": 15})
+        assert inp["maxCrawledPlaces"] == 15
+
+    def test_actor_call_receives_timeout(self):
+        captured: dict = {}
+
+        class CapFake:
+            def actor(self, aid):
+                class _A:
+                    def call(self, run_input, **kw):
+                        captured.update(kw)
+
+                        class _R:
+                            default_dataset_id = "ds1"
+
+                        return _R()
+
+                return _A()
+
+            def dataset(self, did):
+                class _D:
+                    def list_items(self):
+                        class _Res:
+                            items = []
+
+                        return _Res()
+
+                return _D()
+
+        c = GoogleMapsConnector(cache=InMemoryTTLCache(), client=CapFake())
+        c.fetch({"search_terms": ["hvac"], "max_places": 5, "location": "QLD"})
+        # The connector bounds the run via run_timeout (a timedelta).
+        assert "run_timeout" in captured
+        assert captured["run_timeout"].total_seconds() > 0
+
+
+def test_params_for_connector_caps_search_terms():
+    from sourcing.orchestrator import params_for_connector
+    from sourcing.rank.buybox import BuyBox
+
+    bb = BuyBox(sector_keywords=[f"kw{i}" for i in range(20)], states=["QLD"])
+    tiles = params_for_connector("google_maps", bb, max_places=10)
+    assert len(tiles) == 1
+    # Capped to settings.scrape_max_search_terms (default 6).
+    assert len(tiles[0]["search_terms"]) == 6
+    assert tiles[0]["search_terms"] == [f"kw{i}" for i in range(6)]

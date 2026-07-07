@@ -73,6 +73,8 @@ class Settings(BaseSettings):
             self.abn_bulk_dir = str(REPO_ROOT / self.abn_bulk_dir)
         if self.asx_csv_path and not Path(self.asx_csv_path).is_absolute():
             self.asx_csv_path = str(REPO_ROOT / self.asx_csv_path)
+        if self.cache_path and not Path(self.cache_path).is_absolute():
+            self.cache_path = str(REPO_ROOT / self.cache_path)
         if self.ipgod_csv_paths:
             resolved = []
             for p in self.ipgod_csv_paths.split(","):
@@ -90,6 +92,24 @@ class Settings(BaseSettings):
 
     # Apify (scrape connectors: Google Maps, Yellow Pages, Website, LinkedIn)
     apify_api_token: str = ""
+    # Connector cache backend: "memory" (process-local, default/tests),
+    # "sqlite" (persistent across runs — Apify/website results survive restarts,
+    # so repeat runs don't re-bill), or "redis" (when REDIS_URL is set).
+    cache_backend: str = "memory"
+    # Persistent-cache file (sqlite backend + the ABN CompanyRecord cache).
+    cache_path: str = "data/cache.sqlite"
+    # TTL for cached enriched CompanyRecords keyed by ABN (default 14 days).
+    record_cache_ttl_seconds: int = 14 * 24 * 3600
+
+    # Cap on how many resolved sector keywords are passed as scrape search terms.
+    # A broad buy-box can expand to ~20 keywords; Google Maps crawls
+    # maxCrawledPlacesPerSearch PER term, so uncapped terms mean a huge, slow
+    # scrape (a 20-term run took ~17 min for ~2.7k places). Keep the most
+    # relevant few.
+    scrape_max_search_terms: int = 6
+    # Hard wall-clock ceiling per Apify actor run (the actor self-aborts past it),
+    # so a slow/broad scrape can't block a run indefinitely.
+    scrape_actor_timeout_secs: int = 240
 
     # Run orchestration (Part C). With Claude the judge is fast (~seconds/call),
     # so the pool is sized for coverage; Apify spend, not LLM latency, is the cap.

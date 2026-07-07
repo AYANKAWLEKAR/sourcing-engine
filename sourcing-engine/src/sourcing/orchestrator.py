@@ -98,11 +98,16 @@ def params_for_connector(
 
     # --- scrape connectors: tile per state ----------------------------------
     if source_id in _TILED_SOURCES:
+        from .config import get_settings
+
         locations = [
             _STATE_LOCATION.get(s, f"{s} Australia") for s in states
         ] or ["Australia"]
         tiles: list[dict] = []
-        search_terms = keywords or ["business"]
+        # Cap search terms: Google Maps crawls up to max_places PER term, so a
+        # 20-keyword buy-box otherwise fans out into a huge, slow scrape.
+        max_terms = get_settings().scrape_max_search_terms
+        search_terms = (keywords or ["business"])[:max_terms]
         primary_kw = keywords[0] if keywords else "business"
         for loc in locations:
             tiles.append({
