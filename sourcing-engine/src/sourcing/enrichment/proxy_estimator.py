@@ -29,6 +29,11 @@ class ProxyEstimator:
     def estimate(self, record: CompanyRecord) -> CompanyRecord:
         from ..models.company import Provenance
 
+        # Survivorship: a direct, higher-confidence revenue (e.g. Inven) beats the
+        # proxy — don't overwrite it with a benchmark estimate.
+        if (record.size.revenue_confidence or 0.0) > MAX_CONFIDENCE:
+            return record
+
         emp = record.size.employee_count
         if not emp or emp <= 0:
             record.flags.append("unverified:ebitda_aud:no_employee_count")

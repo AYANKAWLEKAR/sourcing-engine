@@ -92,6 +92,12 @@ class Settings(BaseSettings):
 
     # Apify (scrape connectors: Google Maps, Yellow Pages, Website, LinkedIn)
     apify_api_token: str = ""
+
+    # Inven (paid MCP source: pe_vc_backed, institutional ownership, direct revenue).
+    # Both must be set for the shortlist gate to wire Inven; otherwise pe_vc stays an
+    # honest "unchecked" in the diligence checklist.
+    inven_mcp_url: str = ""
+    inven_mcp_token: str = ""
     # Connector cache backend: "memory" (process-local, default/tests),
     # "sqlite" (persistent across runs — Apify/website results survive restarts,
     # so repeat runs don't re-bill), or "redis" (when REDIS_URL is set).

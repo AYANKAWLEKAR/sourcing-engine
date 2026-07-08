@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 _SYSTEM = (
     "You are an M&A analyst judging how well a company fits a buy box. "
     "Weigh qualitative signals (government contracts, accreditation, IP, awards) in context. "
+    "Strongly demote entities that look like holding or investment vehicles rather than "
+    "operating businesses (heed any HOLDING/INVESTMENT warning), and sub-scale companies "
+    "whose operating age or size sits far outside a lower-mid-market SME. "
     "Respond with ONLY a single JSON object."
 )
 
@@ -79,6 +82,8 @@ class LLMJudge:
 
 def summarize(record: CompanyRecord) -> str:
     """Compact, human-readable record summary for the judge prompt."""
+    from .quality import OPERATING_ENTITY_FLAG
+
     m = record.moat_signals
     lines = [
         f"name: {record.legal_name}",
@@ -88,6 +93,22 @@ def summarize(record: CompanyRecord) -> str:
         f"business_model: {record.business_model or 'UNKNOWN'}",
         f"years_operating: {record.age.years_operating if record.age.years_operating is not None else 'unknown'}",
     ]
+    # Age/size/ownership context — the judge (unlocked) does the nuanced weighing
+    # the locked statistical score deliberately omits.
+    if record.ownership.structure_guess:
+        lines.append(f"entity_structure: {record.ownership.structure_guess}")
+    if record.size.employee_count:
+        lines.append(f"employees: {record.size.employee_count}")
+    if record.size.revenue_est_aud:
+        kind = "direct" if (record.size.revenue_confidence or 0.0) > 0.4 else "rough estimate"
+        lines.append(f"revenue_aud: ${record.size.revenue_est_aud:,.0f} ({kind})")
+    if record.ownership.pe_vc_backed is True:
+        lines.append("pe_vc_backed: YES")
+    if OPERATING_ENTITY_FLAG in record.flags:
+        lines.append(
+            "WARNING: name or structure suggests a HOLDING/INVESTMENT vehicle, "
+            "not an operating business — verify it actually trades before rating highly"
+        )
     if m.gov_contracts and m.gov_contract_value_aud:
         lines.append(f"gov_contracts: ${m.gov_contract_value_aud:,} across {m.gov_contract_count or 0} releases")
     if m.regulatory_accreditation:

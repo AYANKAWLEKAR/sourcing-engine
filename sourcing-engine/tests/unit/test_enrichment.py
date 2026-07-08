@@ -65,12 +65,30 @@ def test_signal_extractor_populates_exclude_hits():
     assert rec.sector.exclude_hits == ["retail storefront"]
 
 
-def test_signal_extractor_flags_empty_text_no_crash():
-    rec = _record_with_text("")
+def test_signal_extractor_truly_empty_no_crash():
+    # No text, no name, no category → nothing to classify → flagged, no LLM call.
+    rec = CompanyRecord(entity_id="x", abn="1" * 11, location=Location(state="QLD"))
     llm = FakeLLM(_SIGNAL_JSON)
     SignalExtractor(llm=llm, model="x").extract(rec, _BUYBOX)
     assert "unverified:sector:no_website_text" in rec.flags
     assert llm.calls == 0  # never called the model
+
+
+def test_signal_extractor_category_fallback_when_no_website():
+    # W3: empty website text but a Maps category present → classify from the
+    # category + name (lower confidence, honestly flagged) instead of giving up.
+    rec = CompanyRecord(entity_id="x", abn="1" * 11, legal_name="Neptune Refrigeration",
+                        location=Location(state="QLD"))
+    rec.sector.category_text = ["Air conditioning contractor"]
+    llm = FakeLLM(_SIGNAL_JSON)
+    SignalExtractor(llm=llm, model="x").extract(rec, _BUYBOX)
+    assert llm.calls == 1                                    # fallback classified it
+    assert "unverified:sector:from_category_only" in rec.flags
+    assert "unverified:sector:no_website_text" not in rec.flags
+    assert rec.sector.keyword_hits == ["hvac", "air conditioning"]
+    # Lower confidence than a real-site classification (0.50 vs 0.70).
+    sector_prov = next(p for p in rec.provenance if p.field == "sector")
+    assert sector_prov.confidence == 0.50
 
 
 def test_signal_extractor_handles_unparseable():

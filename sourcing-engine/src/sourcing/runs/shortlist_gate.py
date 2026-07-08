@@ -35,11 +35,19 @@ class ShortlistGate:
         *,
         estimator: ProxyEstimator | None = None,
         connector_registry: Any = None,
+        inven: Any = None,
         top_n: int = 10,
     ) -> None:
         self._entries = {e.source_id: e for e in registry_entries}
         self._estimator = estimator or ProxyEstimator()
         self._conn_registry = connector_registry
+        # Paid MCP source (pe_vc / institutional / direct revenue). None unless
+        # Inven creds are configured — then it runs on the top-N only.
+        if inven is None:
+            from ..connectors.inven import InvenConnector
+
+            inven = InvenConnector.from_settings_if_available()
+        self._inven = inven
         self.top_n = top_n
 
     def apply(self, shortlist: list[RankedCompany]) -> list[RankedCompany]:
@@ -48,6 +56,14 @@ class ShortlistGate:
             record = rc.record
             if linkedin is not None and record.size.employee_count is None:
                 self._fetch_headcount(linkedin, rc)
+            # Inven BEFORE proxy: its direct revenue survives the proxy guard, and
+            # it fills pe_vc_backed (the otherwise-inert EXCLUDE) on the top-N.
+            if self._inven is not None:
+                try:
+                    self._inven.enrich_record(record)
+                except Exception as exc:  # noqa: BLE001
+                    warnings.warn(f"ShortlistGate: inven enrich failed: {exc}", stacklevel=2)
+                    record.flags.append("unverified:ownership:inven_fetch_failed")
             self._estimator.estimate(record)
             # The record changed — rebuild the open-questions checklist.
             rc.deferred_assessment = deferred_items(record)

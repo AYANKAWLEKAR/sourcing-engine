@@ -23,20 +23,36 @@ _JUDGE_WEIGHT = 0.45
 _DEFAULT_POSTCODE_CAP = 3
 
 
+# Friendly wording for known unverified flags (raw flag → analyst-readable item).
+_FRIENDLY_FLAG = {
+    "unverified:operating_entity": "confirm this is an operating business (not a holding/investment vehicle)",
+}
+
+
 def deferred_items(record: CompanyRecord) -> list[str]:
     """Open diligence questions: the unverified fields + standard checks.
 
     Public so the shortlist gate can rebuild a RankedCompany's checklist after
     late enrichment (headcount/proxy estimates) changes the record.
     """
-    items = [f for f in (*record.flags, *record.screen.flags) if f.startswith("unverified:")]
+    items = [
+        _FRIENDLY_FLAG.get(f, f)
+        for f in (*record.flags, *record.screen.flags)
+        if f.startswith("unverified:")
+    ]
+    # Honesty: PE/VC backing is an EXCLUDE criterion, but until a source fills it
+    # (Inven), ``None`` means "not checked" — surface it rather than passing silently.
+    if record.ownership.pe_vc_backed is None:
+        items.append("verify ownership — PE/VC backing not checked (no source filled it)")
     if record.size.ebitda_est_aud is None:
         items.append("verify EBITDA / financials (no estimate yet)")
     if "austender_checked_no_contracts" in record.flags:
         items.append("confirm no government-revenue dependency")
     if record.resolution_confidence is not None and record.resolution_confidence < 0.85:
         items.append(f"confirm ABN match (resolution_confidence={record.resolution_confidence:.2f})")
-    return items
+    # Dedup while preserving order.
+    seen: set[str] = set()
+    return [i for i in items if not (i in seen or seen.add(i))]
 
 
 def rank_pool(

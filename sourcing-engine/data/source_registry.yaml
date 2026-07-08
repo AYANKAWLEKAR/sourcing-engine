@@ -326,3 +326,22 @@ sources:
       air conditioning and HVAC, building and construction — by state. The trade
       category is the sector hint, and finalist/winner status is a tier-1 quality
       moat signal. High-value off-market entry point for trade-sector buy-boxes.
+
+  - source_id: inven
+    connector_type: mcp
+    fields_provided: [pe_vc_backed, ownership_structure, revenue_est_aud]
+    sectors_covered: [all]
+    geo_granularity: national
+    join_key: abn
+    cost_tier: paid
+    freshness: monthly
+    reliability: structured_high
+    enabled: true
+    gate: shortlist_only
+    connector_built: true
+    connector_ref: sourcing.connectors.inven.InvenConnector
+    capability_doc: >
+      Inven company-intelligence MCP source (paid, per-lookup). The only source that
+      fills ownership.pe_vc_backed — the private-equity/VC EXCLUDE that is otherwise
+      screened but never verified — plus institutional ownership and a direct revenue
+      estimate that beats the proxy. Runs shortlist-only on the ranked top-N.

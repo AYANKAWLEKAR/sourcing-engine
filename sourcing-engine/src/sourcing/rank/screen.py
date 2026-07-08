@@ -67,5 +67,11 @@ def screen(record: CompanyRecord, buybox: BuyBox) -> bool:
     if fails_proxy_gate_beyond_error(record, buybox):
         record.screen.status = "proxy_gated_out"
         return False
+    # Soft signals — flag but never fail. A suspected holding/investment shell is
+    # demoted via the scorer's unverified-gate penalty and surfaced to the judge +
+    # diligence checklist, but a survivor (real SMEs sometimes use these structures).
+    from .quality import flag_operating_entity
+
+    flag_operating_entity(record)
     record.screen.status = "survivor"
     return True

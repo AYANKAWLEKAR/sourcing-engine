@@ -57,9 +57,19 @@ class SignalExtractor:
         from ..models.company import Provenance
 
         text = (record.website_text_raw or "").strip()
-        if len(text) < 40:  # nothing meaningful to classify
-            record.flags.append("unverified:sector:no_website_text")
-            return record
+        # Confidence is 0.70 from real site text; lower for the category fallback.
+        sector_conf = 0.70
+        if len(text) < 40:
+            # Fallback: classify from the Maps category + legal name so the sector
+            # signal isn't zeroed when the website is absent/failed (the common case
+            # on the scrape tier — ~97% of Maps records). Honestly flagged + a lower
+            # confidence, so verified-from-site records still rank ahead.
+            text = self._category_text(record)
+            if len(text) < 4:  # truly nothing to go on
+                record.flags.append("unverified:sector:no_website_text")
+                return record
+            record.flags.append("unverified:sector:from_category_only")
+            sector_conf = 0.50
 
         data = complete_json(
             self._llm,
@@ -93,12 +103,17 @@ class SignalExtractor:
                 setattr(record.moat_signals, key, bool(moat[key]))
 
         record.provenance.append(
-            Provenance(field="sector", source="signal_extractor", confidence=0.70)
+            Provenance(field="sector", source="signal_extractor", confidence=sector_conf)
         )
         record.provenance.append(
-            Provenance(field="business_model", source="signal_extractor", confidence=0.70)
+            Provenance(field="business_model", source="signal_extractor", confidence=sector_conf)
         )
         return record
+
+    def _category_text(self, record: CompanyRecord) -> str:
+        """Discovery-time sector text (Maps category + legal name) for the fallback."""
+        parts = [*(record.sector.category_text or []), record.legal_name or ""]
+        return " — ".join(p for p in parts if p).strip()
 
 
 def _as_list(value) -> list[str]:
