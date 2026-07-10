@@ -308,4 +308,19 @@ awards) are all in place and tested. What remains slots onto the existing base c
   Awards — reuse `AwardRegisterConnector` (set `program`/`base_url_template`/`category_slugs`).
 - **MCP** (`MCPConnector`): Inven (stub → wired when the MCP server is connected).
 - **Part C**: persist a `Run` in Postgres + a FastAPI surface (`POST /runs`, `GET /runs/{id}`).
-- **Part D**: the analyst UI (buy-box chat → run progress → shortlist → company detail).
+- **Part D** ✅: the analyst UI (buy-box chat → run progress → shortlist → company detail).
+
+## Analyst UI (Part D)
+
+A Streamlit UI over the run API — buy-box **chat** → stage-level **progress bar** →
+interactive **ranked shortlist** → company **detail** drawer (with provenance receipts).
+
+```bash
+pip install -e ".[ui]"          # adds streamlit
+python cli.py serve --ui        # FastAPI :8000 + Streamlit :8501; open http://localhost:8000 (redirects to the UI)
+```
+
+The UI (`ui/`) talks only to the HTTP API via `OrigoClient` (`ORIGO_API_URL`, default
+`http://localhost:8000`). Streamlit runs its own server, so `serve --ui` launches it as a
+subprocess and the API root redirects to it. Tests are offline: `tests/unit/test_ui_client.py`
+(respx-mocked HTTP) and `tests/unit/test_ui_app.py` (Streamlit `AppTest` with a fake client).

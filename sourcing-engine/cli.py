@@ -399,12 +399,37 @@ def run_pipeline(
 def serve(
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8000, "--port"),
+    ui: bool = typer.Option(False, "--ui", help="Also launch the Streamlit analyst UI."),
+    ui_port: int = typer.Option(8501, "--ui-port", help="Port for the Streamlit UI."),
 ) -> None:
-    """Serve the run API (single worker only — buy-box sessions are in-process)."""
+    """Serve the run API (single worker only — buy-box sessions are in-process).
+
+    With --ui, also launches the Streamlit analyst UI as a subprocess and points
+    the API root redirect at it (GET / → the UI).
+    """
+    import os
+    import subprocess
+    from pathlib import Path
+
     import uvicorn
 
+    ui_proc = None
+    if ui:
+        os.environ["UI_URL"] = f"http://{host}:{ui_port}"
+        os.environ.setdefault("ORIGO_API_URL", f"http://{host}:{port}")
+        ui_app = Path(__file__).parent / "ui" / "app.py"
+        ui_proc = subprocess.Popen(
+            ["streamlit", "run", str(ui_app),
+             "--server.address", host, "--server.port", str(ui_port)]
+        )
+        console.print(f"[bold cyan]Origo analyst UI[/] → http://{host}:{ui_port}")
+
     console.print(f"[bold cyan]Origo run API[/] → http://{host}:{port}  (docs at /docs)")
-    uvicorn.run("sourcing.api.app:app", host=host, port=port, workers=1)
+    try:
+        uvicorn.run("sourcing.api.app:app", host=host, port=port, workers=1)
+    finally:
+        if ui_proc is not None:
+            ui_proc.terminate()
 
 
 if __name__ == "__main__":

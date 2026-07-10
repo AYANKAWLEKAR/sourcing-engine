@@ -10,9 +10,11 @@ held in-process; a multi-worker deployment would strand conversations.
 """
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
 
 from .schemas import (
     BuyBoxReply,
@@ -50,6 +52,11 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
         return _manager[0]
 
     # ------------------------------------------------------------------
+
+    @app.get("/", include_in_schema=False)
+    def index() -> RedirectResponse:
+        """Redirect the root to the Streamlit analyst UI (see `serve --ui`)."""
+        return RedirectResponse(os.environ.get("UI_URL", "http://localhost:8501"))
 
     @app.post("/runs", response_model=BuyBoxReply, status_code=201)
     def start_run(body: StartRunRequest) -> BuyBoxReply:
