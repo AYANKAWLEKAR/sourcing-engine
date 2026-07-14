@@ -50,6 +50,10 @@ class RunStore(Protocol):
     def get_company(self, run_id: str, abn: str) -> tuple[CompanyRecord, bool] | None: ...
     def save_shortlist(self, run_id: str, shortlist: list[RankedCompany]) -> None: ...
     def mark_selected(self, run_id: str, abn: str) -> bool: ...
+    def list_runs(self) -> list[dict]: ...
+    def append_message(self, run_id: str, role: str, text: str) -> None: ...
+    def set_label(self, run_id: str, label: str) -> None: ...
+    def list_selected(self, run_id: str) -> list[CompanyRecord]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +142,51 @@ class InMemoryRunStore:
             entry[1] = True
             return True
 
+    def list_runs(self) -> list[dict]:
+        with self._lock:
+            runs = sorted(
+                self._runs.values(),
+                key=lambda r: r.created_at or "",
+                reverse=True,
+            )
+            return [_run_summary(r) for r in runs]
+
+    def append_message(self, run_id: str, role: str, text: str) -> None:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is None:
+                return
+            run.conversation.append({"role": role, "text": text, "at": _now_iso()})
+
+    def set_label(self, run_id: str, label: str) -> None:
+        with self._lock:
+            run = self._runs.get(run_id)
+            if run is not None:
+                run.label = label
+
+    def list_selected(self, run_id: str) -> list[CompanyRecord]:
+        from ..models.company import CompanyRecord
+
+        with self._lock:
+            out = []
+            for (rid, _abn), entry in self._companies.items():
+                if rid == run_id and entry[1]:
+                    out.append(CompanyRecord(**entry[0]))
+            return out
+
+
+def _run_summary(run: Run) -> dict:
+    """Compact listing row for the saved-runs sidebar."""
+    return {
+        "run_id": run.run_id,
+        "label": run.label,
+        "status": run.status.value if hasattr(run.status, "value") else run.status,
+        "thesis": (run.conversation[0]["text"] if run.conversation else None),
+        "n_shortlist": len(run.shortlist) if run.shortlist else 0,
+        "created_at": run.created_at,
+        "updated_at": run.updated_at,
+    }
+
 
 # ---------------------------------------------------------------------------
 # Postgres implementation
@@ -175,9 +224,11 @@ class PostgresRunStore:
                 status=RunStatus(row.status),
                 error=row.error,
                 ruleset_id=row.ruleset_id,
+                label=row.label,
                 source_plan=row.source_plan or [],
                 coverage=row.coverage or {},
                 shortlist=row.shortlist,
+                conversation=row.conversation or [],
                 stage_history=row.stage_history or [],
                 created_at=row.created_at.isoformat() if row.created_at else None,
                 updated_at=row.updated_at.isoformat() if row.updated_at else None,
@@ -346,3 +397,74 @@ class PostgresRunStore:
                 return False
             link.selected = True
             return True
+
+    def list_runs(self) -> list[dict]:
+        from sqlalchemy import select
+
+        from ..db import session_scope
+        from ..tables.core import RunRow
+
+        with session_scope() as session:
+            rows = session.execute(
+                select(RunRow).order_by(RunRow.created_at.desc())
+            ).scalars().all()
+            return [
+                {
+                    "run_id": r.run_id,
+                    "label": r.label,
+                    "status": r.status,
+                    "thesis": (r.conversation[0]["text"] if r.conversation else None),
+                    "n_shortlist": len(r.shortlist) if r.shortlist else 0,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                }
+                for r in rows
+            ]
+
+    def append_message(self, run_id: str, role: str, text: str) -> None:
+        from ..db import session_scope
+        from ..tables.core import RunRow
+
+        with session_scope() as session:
+            row = session.get(RunRow, run_id)
+            if row is None:
+                return
+            row.conversation = [
+                *(row.conversation or []),
+                {"role": role, "text": text, "at": _now_iso()},
+            ]
+
+    def set_label(self, run_id: str, label: str) -> None:
+        from ..db import session_scope
+        from ..tables.core import RunRow
+
+        with session_scope() as session:
+            row = session.get(RunRow, run_id)
+            if row is not None:
+                row.label = label
+
+    def list_selected(self, run_id: str) -> list[CompanyRecord]:
+        import json
+
+        from sqlalchemy import select, text
+
+        from ..db import session_scope
+        from ..models.company import CompanyRecord
+        from ..tables.core import RunCompanyRow
+
+        with session_scope() as session:
+            links = session.execute(
+                select(RunCompanyRow).where(
+                    RunCompanyRow.run_id == run_id, RunCompanyRow.selected.is_(True)
+                )
+            ).scalars().all()
+            out: list[CompanyRecord] = []
+            for link in links:
+                row = session.execute(
+                    text("SELECT record FROM companies WHERE entity_id = :eid"),
+                    {"eid": link.entity_id},
+                ).fetchone()
+                if row and row[0] is not None:
+                    payload = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                    out.append(CompanyRecord(**payload))
+            return out

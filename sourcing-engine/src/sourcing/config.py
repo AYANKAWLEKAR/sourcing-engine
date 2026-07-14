@@ -120,12 +120,17 @@ class Settings(BaseSettings):
     # Run orchestration (Part C). With Claude the judge is fast (~seconds/call),
     # so the pool is sized for coverage; Apify spend, not LLM latency, is the cap.
     run_workers: int = 1          # concurrent pipeline executions
-    run_plan_k: int = 8           # sources in the retrieved SourcePlan
+    run_plan_k: int = 8           # sources in the retrieved SourcePlan (RAG path only)
+    run_use_all_sources: bool = True  # bypass RAG selection — plan every enabled source
     run_max_places: int = 25      # scrape cap per state tile (Apify cost bound)
     run_enrich_workers: int = 4   # concurrent enrichment threads within a run
-    run_top_k: int = 10           # shortlist size
-    run_judge_k: int = 25         # records sent to the LLM judge
-    shortlist_gate_n: int = 10    # top-N passed through the shortlist gate
+    run_top_k: int = 30           # shortlist size
+    run_judge_k: int = 40         # records sent to the LLM judge (must exceed run_top_k)
+    shortlist_gate_n: int = 30    # top-N passed through the shortlist gate
+
+    # Demo-prompt cache: replay a captured run for canned prompts (see runs/demo_cache).
+    demo_cache_enabled: bool = True
+    demo_cache_replay_seconds: float = 0.9   # per-stage dwell so the trace animates
 
 
 _settings: Settings | None = None

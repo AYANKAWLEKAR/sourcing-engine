@@ -21,7 +21,38 @@ def test_tool_update_ruleset(fresh_ruleset):
 
 def test_tool_update_ruleset_unknown_field(fresh_ruleset):
     editor = RulesetEditor(fresh_ruleset)
-    assert editor.update_ruleset("does_not_exist", {})["ok"] is False
+    out = editor.update_ruleset("does_not_exist", {})
+    assert out["ok"] is False
+    # The failure returns the valid names so the agent self-corrects instead of
+    # re-guessing (the field-name-guessing bug from the demo).
+    assert "ownership_structure" in out["available_fields"]
+
+
+def test_summarize_ruleset_tracks_resolution(fresh_ruleset):
+    from sourcing.agent.tools import summarize_ruleset
+
+    editor = RulesetEditor(fresh_ruleset)
+    # The base ruleset ships sector defaults but no postcodes — geography is the gap.
+    before = summarize_ruleset(editor.ruleset)
+    assert before["geography_resolved"] is False
+    assert any("geography" in m for m in before["missing"])
+
+    editor.resolve_geography(states=["QLD"])
+    after = summarize_ruleset(editor.ruleset)
+    assert after["geography_resolved"] is True
+    assert "QLD" in after["states"]
+    assert after["missing"] == []
+
+
+def test_state_block_lists_fields_and_missing(fresh_ruleset):
+    llm = scripted_llm(LLMResponse(text="hi"))
+    agent = BuyBoxAgent(llm=llm, base_ruleset=fresh_ruleset, model=MODEL)
+    block = agent._state_block()
+    # Exact field names are surfaced so the model never guesses them.
+    assert "ownership_structure" in block
+    assert "EDITABLE FIELDS" in block
+    # Geography is unresolved on a fresh ruleset (no postcodes yet).
+    assert "Geography: NOT RESOLVED" in block
 
 
 def test_tool_resolve_sector(fresh_ruleset):

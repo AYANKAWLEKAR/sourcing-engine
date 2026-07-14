@@ -137,6 +137,83 @@ def test_score_wrong_state_and_model_lower():
 
 
 # ---------------------------------------------------------------------------
+# Evidence score (deterministic enriched-signal layer)
+# ---------------------------------------------------------------------------
+
+_EBB = BuyBox(thesis="HVAC", sector_keywords=["hvac"], states=["QLD"],
+              ebitda_min=1_000_000, ebitda_max=5_000_000)
+
+
+def test_evidence_empty_record_is_zero():
+    from sourcing.rank.score import evidence_score
+
+    assert evidence_score(_co("Bare"), _EBB) == 0.0
+
+
+def test_evidence_gov_value_scales_and_saturates():
+    from sourcing.rank.score import s_gov
+
+    small = _co("Small")
+    small.moat_signals.gov_contracts = True
+    small.moat_signals.gov_contract_value_aud = 50_000
+    big = _co("Big")
+    big.moat_signals.gov_contracts = True
+    big.moat_signals.gov_contract_value_aud = 5_000_000
+    assert 0.0 < s_gov(small) < s_gov(big)
+    assert s_gov(big) == pytest.approx(1.0, abs=0.001)
+    # Presence-only (no value) earns the floor, not zero.
+    presence = _co("Present")
+    presence.moat_signals.gov_contracts = True
+    assert s_gov(presence) == pytest.approx(0.4, abs=0.001)
+
+
+def test_evidence_award_tiers():
+    from sourcing.models.company import AwardSignal
+    from sourcing.rank.score import s_award
+
+    national_winner = _co("NatWin")
+    national_winner.award_signals = [AwardSignal(program="Telstra", tier=1, level="winner")]
+    regional_finalist = _co("RegFin")
+    regional_finalist.award_signals = [AwardSignal(program="Local", tier=2, level="finalist")]
+    assert s_award(national_winner) == pytest.approx(1.0)
+    assert s_award(regional_finalist) == pytest.approx(0.5)
+
+
+def test_evidence_ebitda_in_band_scaled_by_confidence():
+    from sourcing.rank.score import s_ebitda_fit
+
+    verified = _co("Verified")
+    verified.size.ebitda_est_aud = 3_000_000
+    verified.size.ebitda_confidence = 1.0
+    proxy = _co("Proxy")
+    proxy.size.ebitda_est_aud = 3_000_000
+    proxy.size.ebitda_confidence = 0.3
+    assert s_ebitda_fit(verified, _EBB) == pytest.approx(1.0)
+    # Same in-band EBITDA but a low-confidence proxy counts for much less.
+    assert s_ebitda_fit(proxy, _EBB) == pytest.approx(0.3, abs=0.001)
+    # Out of band earns less than in band.
+    out = _co("Out")
+    out.size.ebitda_est_aud = 20_000_000
+    out.size.ebitda_confidence = 1.0
+    assert s_ebitda_fit(out, _EBB) < 1.0
+
+
+def test_evidence_score_blends_and_clamps():
+    from sourcing.rank.score import evidence_score
+
+    loaded = _co("Loaded")
+    loaded.moat_signals.gov_contracts = True
+    loaded.moat_signals.gov_contract_value_aud = 5_000_000
+    loaded.moat_signals.regulatory_accreditation = True
+    loaded.size.ebitda_est_aud = 3_000_000
+    loaded.size.ebitda_confidence = 1.0
+    s = evidence_score(loaded, _EBB)
+    assert 0.0 < s <= 1.0
+    # gov(0.30) + accred(0.10) + ebitda_fit(0.30) = 0.70
+    assert s == pytest.approx(0.70, abs=0.001)
+
+
+# ---------------------------------------------------------------------------
 # Judge + rank
 # ---------------------------------------------------------------------------
 
@@ -165,8 +242,12 @@ def test_rank_blends_and_orders():
     assert "Listed" not in names                  # excluded before scoring
     assert names[0] == "Cool Air QLD"             # best statistical fit ranks first
     top = ranked[0]
-    # S_final = 0.55*(s_stat/100) + 0.45*0.8
-    assert top.s_final == pytest.approx(0.55 * (top.s_stat / 100) + 0.45 * 0.8, abs=0.001)
+    # Accreditation is the only evidence term set → s_ev = 0.10 (accred weight).
+    assert top.s_evidence == pytest.approx(0.10, abs=0.001)
+    # S_final = 0.40*(s_stat/100) + 0.25*judge_fit + 0.35*s_evidence
+    assert top.s_final == pytest.approx(
+        0.40 * (top.s_stat / 100) + 0.25 * 0.8 + 0.35 * top.s_evidence, abs=0.001
+    )
     # Standout signals are GROUNDED (from the record), not the judge's free text.
     assert "regulatory accreditation" in top.standout_signals
     assert isinstance(top.deferred_assessment, list)

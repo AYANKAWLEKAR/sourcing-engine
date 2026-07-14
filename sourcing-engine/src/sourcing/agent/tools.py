@@ -10,6 +10,73 @@ from ..llm import LLMClient
 from ..models.filter_rule import FilterRuleset
 from . import resolvers
 
+# Key non-sector/geography fields surfaced in the ruleset-state summary (the ones a
+# searcher typically tweaks). Everything else stays on its base default silently.
+_SUMMARY_FIELDS: tuple[str, ...] = (
+    "ebitda_aud",
+    "revenue_aud",
+    "years_operating",
+    "employee_count",
+    "ownership_structure",
+    "pe_vc_backed",
+    "listed_entity",
+)
+
+
+def fields_by_group(ruleset: FilterRuleset) -> dict[str, list[str]]:
+    """Editable rule field names grouped by their ``group`` (e.g. financial, geography).
+
+    The agent embeds this so it uses the EXACT field names in ``update_ruleset``
+    instead of guessing (a guessed name is rejected as an unknown field).
+    """
+    groups: dict[str, list[str]] = {}
+    for r in ruleset.rules:
+        groups.setdefault(r.group, []).append(r.field)
+    return groups
+
+
+def summarize_ruleset(ruleset: FilterRuleset) -> dict:
+    """A compact, UI/prompt-friendly snapshot of what the ruleset has resolved.
+
+    Pure (derives everything from the ruleset itself) so both the agent prompt and
+    the API/UI can call it. ``missing`` lists — in plain language — the buy-box
+    schema fields still required before ``finalize_ruleset`` will succeed.
+    """
+    def _logic(field: str) -> dict:
+        return ruleset.rule(field).logic if ruleset.has_rule(field) else {}
+
+    anzsic = _logic("anzsic_code").get("values") or []
+    keywords = _logic("sector_keyword_match").get("include") or []
+    state_logic = _logic("state")
+    states = state_logic.get("values") or []
+    postcodes = state_logic.get("postcodes") or []
+
+    sector_resolved = bool(anzsic and keywords)
+    geography_resolved = bool(postcodes)
+
+    missing: list[str] = []
+    if not sector_resolved:
+        missing.append("sector — ANZSIC codes + keywords (call resolve_sector)")
+    if not geography_resolved:
+        missing.append("geography — target states/postcodes (call resolve_geography)")
+
+    settings: dict[str, dict] = {}
+    for f in _SUMMARY_FIELDS:
+        lg = _logic(f)
+        if lg:
+            settings[f] = lg
+
+    return {
+        "confirmed": ruleset.confirmed,
+        "sector_resolved": sector_resolved,
+        "geography_resolved": geography_resolved,
+        "anzsic_codes": anzsic,
+        "sector_keywords": keywords,
+        "states": states,
+        "settings": settings,
+        "missing": missing,
+    }
+
 # Tool schemas in the Ollama / OpenAI function-calling format.
 TOOL_SCHEMAS: list[dict] = [
     {
@@ -80,10 +147,24 @@ class RulesetEditor:
         self.postcodes: list[str] = []
         self.states: list[str] = []
 
+    # --- introspection (for the agent prompt + API/UI) ---
+    def resolution_state(self) -> dict:
+        """Snapshot of resolved/missing fields — see :func:`summarize_ruleset`."""
+        return summarize_ruleset(self.ruleset)
+
+    def fields_by_group(self) -> dict[str, list[str]]:
+        """Valid editable field names grouped by group — see :func:`fields_by_group`."""
+        return fields_by_group(self.ruleset)
+
     # --- tool handlers ---
     def update_ruleset(self, field: str, logic: dict) -> dict:
         if not self.ruleset.has_rule(field):
-            return {"ok": False, "error": f"unknown field '{field}'"}
+            # Return the valid names so the agent self-corrects instead of re-guessing.
+            return {
+                "ok": False,
+                "error": f"unknown field '{field}'",
+                "available_fields": [r.field for r in self.ruleset.rules],
+            }
         rule = self.ruleset.rule(field)
         rule.logic = dict(logic)
         return {"ok": True, "field": field, "logic": rule.logic}

@@ -38,7 +38,7 @@ class FakePipeline:
     def __init__(self, store):
         self._store = store
 
-    def execute(self, run_id, ruleset):
+    def execute(self, run_id, ruleset, *, cache_key=None):
         record = CompanyRecord(
             entity_id=f"abn:{_ABN}", abn=_ABN, legal_name="Acme Air",
             location=Location(state="QLD", postcode="4000"),
@@ -155,6 +155,67 @@ def test_buybox_past_stage_409(client):
     resp = client.post(f"/runs/{run_id}/buybox", json={"message": "more"})
     assert resp.status_code == 409
     assert "past the buybox stage" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Saved chats, listing, labelling, conversational re-rank, selected list
+# ---------------------------------------------------------------------------
+
+def test_conversation_persisted_and_returned(client):
+    run_id = client.post("/runs", json={"message": "Testing firms in QLD, finalize"}).json()["run_id"]
+    convo = client.get(f"/runs/{run_id}").json()["conversation"]
+    assert convo[0]["role"] == "user"
+    assert convo[0]["text"] == "Testing firms in QLD, finalize"
+
+
+def test_list_runs_endpoint(client):
+    id1 = client.post("/runs", json={"message": "buy box one"}).json()["run_id"]
+    id2 = client.post("/runs", json={"message": "buy box two"}).json()["run_id"]
+    runs = client.get("/runs").json()["runs"]
+    ids = {r["run_id"] for r in runs}
+    assert {id1, id2} <= ids
+    assert any(r["thesis"] == "buy box two" for r in runs)
+
+
+def test_label_run_endpoint(client):
+    run_id = client.post("/runs", json={"message": "confirm"}).json()["run_id"]
+    resp = client.patch(f"/runs/{run_id}", json={"label": "My saved search"})
+    assert resp.status_code == 200
+    assert resp.json()["label"] == "My saved search"
+    assert client.patch("/runs/run_nope", json={"label": "x"}).status_code == 404
+
+
+def test_selected_list_endpoint(client):
+    run_id = client.post("/runs", json={"message": "confirm"}).json()["run_id"]
+    client.post(f"/runs/{run_id}/select", json={"abn": _ABN})
+    body = client.get(f"/runs/{run_id}/selected").json()
+    assert [c["legal_name"] for c in body["companies"]] == ["Acme Air"]
+
+
+def test_query_endpoint_reranks(client, monkeypatch):
+    from sourcing.rank import pool_query
+
+    run_id = client.post("/runs", json={"message": "confirm"}).json()["run_id"]
+
+    def _fake_parse(text, thesis="", **kw):
+        return pool_query.QuerySpec(
+            filters=[pool_query.Filter(field="state", op="eq", value="QLD")],
+            sort_by="s_final", order="desc")
+
+    monkeypatch.setattr(pool_query, "parse_query", _fake_parse)
+    resp = client.post(f"/runs/{run_id}/query", json={"message": "QLD only"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["results"][0]["record"]["legal_name"] == "Acme Air"
+    assert body["spec"]["sort_by"] == "s_final"
+
+
+def test_query_endpoint_409_without_shortlist(client):
+    # A run parked in buybox (multi-turn) has no shortlist yet.
+    client.scripts["queue"] = [LLMResponse(text="Which states?")]
+    run_id = client.post("/runs", json={"message": "vague"}).json()["run_id"]
+    resp = client.post(f"/runs/{run_id}/query", json={"message": "gov contracts only"})
+    assert resp.status_code == 409
 
 
 def test_company_not_in_run_404(client):

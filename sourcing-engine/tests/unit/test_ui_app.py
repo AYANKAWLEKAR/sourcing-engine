@@ -121,7 +121,8 @@ def test_detail_drawer_shows_provenance():
     at.session_state["selected_abn"] = ABN
     at.run()
 
-    assert any("Company detail" in s.value for s in at.subheader)
+    # The chat-style detail drawer renders its heading as markdown, not a subheader.
+    assert any("Company detail" in m.value for m in at.markdown)
 
 
 def test_needs_review_warns_and_stays_in_chat():

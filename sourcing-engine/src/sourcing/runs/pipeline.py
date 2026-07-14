@@ -17,11 +17,12 @@ injectable so the pipeline unit-tests offline with fakes.
 """
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ..models.run import RunStatus
+from ..models.run import PIPELINE_STAGES, RunStatus
 from ..rank.buybox import BuyBox
 
 if TYPE_CHECKING:
@@ -114,7 +115,18 @@ class RunPipeline:
 
     # ------------------------------------------------------------------
 
-    def execute(self, run_id: str, ruleset: FilterRuleset) -> list[RankedCompany]:
+    def execute(
+        self, run_id: str, ruleset: FilterRuleset, *, cache_key: str | None = None
+    ) -> list[RankedCompany]:
+        # Demo replay: serve a captured run through the same stage transitions (so
+        # the UI trace still animates) instead of hitting Apify + the LLMs.
+        if cache_key and getattr(self._settings, "demo_cache_enabled", True):
+            from . import demo_cache
+
+            cached = demo_cache.load(cache_key)
+            if cached is not None:
+                return self._replay(run_id, cached)
+
         stage = RunStatus.PLANNING
         try:
             comp = self._components or PipelineComponents.build_default(self._settings)
@@ -123,7 +135,14 @@ class RunPipeline:
 
             # --- planning -------------------------------------------------
             self._set(run_id, RunStatus.PLANNING)
-            plan = comp.retriever.retrieve(ruleset, k=s.run_plan_k)
+            if getattr(s, "run_use_all_sources", False):
+                # Bypass RAG selection: plan every enabled source and let the
+                # orchestrator's own gating decide what actually runs.
+                from ..rag.retriever import all_sources_plan
+
+                plan = all_sources_plan(comp.registry_entries, ruleset)
+            else:
+                plan = comp.retriever.retrieve(ruleset, k=s.run_plan_k)
             self._store.save_source_plan(run_id, plan)
 
             # --- acquiring ------------------------------------------------
@@ -180,6 +199,44 @@ class RunPipeline:
             raise
 
     # ------------------------------------------------------------------
+
+    def _replay(self, run_id: str, cached: dict) -> list[RankedCompany]:
+        """Replay a captured run: step every stage (with the real coverage/plan the
+        run produced) so the trace animates, but serve the shortlist from cache."""
+        from ..models.ranking import RankedCompany
+        from ..models.source import SourcePlanItem
+
+        pace = float(getattr(self._settings, "demo_cache_replay_seconds", 0.9))
+        coverage: dict = cached.get("coverage") or {}
+        plan = [SourcePlanItem(**p) for p in cached.get("source_plan") or []]
+        shortlist = [RankedCompany(**rc) for rc in cached.get("shortlist") or []]
+
+        # Which coverage counters land at which stage boundary (so numbers stream
+        # in as they did on the real run rather than all at once at the end).
+        stage_coverage = {
+            RunStatus.ACQUIRING: ("n_raw", "n_pool"),
+            RunStatus.RESOLVING: ("n_resolved",),
+            RunStatus.RANKING: ("n_shortlist",),
+        }
+
+        for stage in PIPELINE_STAGES:
+            self._set(run_id, stage)
+            if stage is RunStatus.PLANNING and plan:
+                self._store.save_source_plan(run_id, plan)
+            counters = {
+                k: coverage[k] for k in stage_coverage.get(stage, ()) if k in coverage
+            }
+            if counters:
+                self._store.update_coverage(run_id, **counters)
+            time.sleep(pace)
+
+        # Persist the shortlist records so the company-detail drawer works.
+        for rc in shortlist:
+            self._store.save_company(run_id, rc.record)
+        self._store.save_shortlist(run_id, shortlist)
+        self._store.update_coverage(run_id, n_shortlist=len(shortlist))
+        self._set(run_id, RunStatus.COMPLETE)
+        return shortlist
 
     def _set(self, run_id: str, status: RunStatus) -> None:
         self._store.set_status(run_id, status)

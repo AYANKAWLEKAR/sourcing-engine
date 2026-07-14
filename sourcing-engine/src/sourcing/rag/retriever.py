@@ -29,6 +29,45 @@ def required_fields(ruleset: FilterRuleset) -> set[str]:
     return {r.field for r in ruleset.discovery_relevant_rules()}
 
 
+def all_sources_plan(
+    registry: list[SourceRegistryEntry], ruleset: FilterRuleset
+) -> list[SourcePlanItem]:
+    """Plan every ENABLED source, bypassing RAG selection entirely.
+
+    Used when ``run_use_all_sources`` is set: instead of ranking a subset by
+    sector fit, we hand the orchestrator all enabled sources and let its own
+    internal gating (enrichment-only, ``shortlist_only``) decide what runs.
+    Mirrors the plan-item shape of ``SourceRetriever._to_plan_item`` so the
+    downstream contract is identical.
+    """
+    required = required_fields(ruleset)
+    plan: list[SourcePlanItem] = []
+    for entry in registry:
+        if not entry.enabled:
+            continue
+        contributes = sorted(set(entry.fields_provided) & required)
+        tags: list[str] = []
+        if entry.source_id in SPINE_SOURCES:
+            tags.append("spine")
+        if entry.source_id in TEXT_SOURCES:
+            tags.append("text_source")
+        bits = ["all-sources mode"]
+        if contributes:
+            bits.append("covers " + ", ".join(contributes))
+        plan.append(
+            SourcePlanItem(
+                source_id=entry.source_id,
+                connector_type=entry.connector_type,
+                score=1.0,
+                rationale="; ".join(bits),
+                fields_contributed=contributes,
+                cost_tier=entry.cost_tier,
+                invariant_tags=tags,
+            )
+        )
+    return plan
+
+
 def build_query_text(ruleset: FilterRuleset) -> str:
     """Compose a retrieval query from the ruleset's sector intent + dimensions."""
     parts: list[str] = []

@@ -399,13 +399,14 @@ def run_pipeline(
 def serve(
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8000, "--port"),
-    ui: bool = typer.Option(False, "--ui", help="Also launch the Streamlit analyst UI."),
-    ui_port: int = typer.Option(8501, "--ui-port", help="Port for the Streamlit UI."),
+    ui: bool = typer.Option(False, "--ui", help="Also launch the Next.js frontend (dev server)."),
+    ui_port: int = typer.Option(3000, "--ui-port", help="Port for the Next.js frontend."),
 ) -> None:
     """Serve the run API (single worker only — buy-box sessions are in-process).
 
-    With --ui, also launches the Streamlit analyst UI as a subprocess and points
-    the API root redirect at it (GET / → the UI).
+    With --ui, also launches the Next.js frontend (``npm run dev``) as a subprocess
+    and points the API root redirect at it (GET / → the UI). The frontend proxies
+    ``/api/*`` back to this API, so set API_PROXY_TARGET if the port isn't 8000.
     """
     import os
     import subprocess
@@ -416,13 +417,14 @@ def serve(
     ui_proc = None
     if ui:
         os.environ["UI_URL"] = f"http://{host}:{ui_port}"
-        os.environ.setdefault("ORIGO_API_URL", f"http://{host}:{port}")
-        ui_app = Path(__file__).parent / "ui" / "app.py"
+        frontend = Path(__file__).parent / "frontend"
+        env = {**os.environ, "API_PROXY_TARGET": f"http://{host}:{port}"}
         ui_proc = subprocess.Popen(
-            ["streamlit", "run", str(ui_app),
-             "--server.address", host, "--server.port", str(ui_port)]
+            ["npm", "run", "dev", "--", "--port", str(ui_port)],
+            cwd=str(frontend),
+            env=env,
         )
-        console.print(f"[bold cyan]Origo analyst UI[/] → http://{host}:{ui_port}")
+        console.print(f"[bold cyan]Origo frontend[/] → http://{host}:{ui_port}")
 
     console.print(f"[bold cyan]Origo run API[/] → http://{host}:{port}  (docs at /docs)")
     try:

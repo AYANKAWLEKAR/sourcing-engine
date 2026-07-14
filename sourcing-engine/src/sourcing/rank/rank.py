@@ -1,9 +1,11 @@
 """Rank pipeline — screen → score → judge → blend → diversity (plan §3.3–3.4).
 
-    S_final = 0.55·(S_stat/100) + 0.45·judge_fit
+    S_final = 0.40·(S_stat/100) + 0.25·judge_fit + 0.35·S_ev
 
-The top-50 by S_stat go to the judge; a diversity guard stops the top-20 from
-collapsing onto one postcode. Returns a list of RankedCompany.
+S_stat is sector/geo/model fit; judge_fit is the LLM's qualitative read; S_ev is the
+deterministic enriched-evidence score (gov contracts, awards, IP, accreditation,
+EBITDA-in-band). The top judge_k by S_stat go to the judge; a diversity guard stops
+the top-k from collapsing onto one postcode. Returns a list of RankedCompany.
 """
 from __future__ import annotations
 
@@ -11,15 +13,16 @@ from typing import TYPE_CHECKING
 
 from ..models.ranking import RankedCompany
 from .judge import LLMJudge, standout_signals
-from .score import statistical_fit
+from .score import evidence_score, statistical_fit
 from .screen import screen
 
 if TYPE_CHECKING:
     from ..models.company import CompanyRecord
     from .buybox import BuyBox
 
-_STAT_WEIGHT = 0.55
-_JUDGE_WEIGHT = 0.45
+_STAT_WEIGHT = 0.40
+_JUDGE_WEIGHT = 0.25
+_EVIDENCE_WEIGHT = 0.35
 _DEFAULT_POSTCODE_CAP = 3
 
 
@@ -81,7 +84,12 @@ def rank_pool(
     ranked: list[RankedCompany] = []
     for record, s_stat in scored[:judge_k]:
         jr = judge.judge(record, buybox)
-        s_final = _STAT_WEIGHT * (s_stat / 100.0) + _JUDGE_WEIGHT * jr.fit
+        s_ev = evidence_score(record, buybox)
+        s_final = (
+            _STAT_WEIGHT * (s_stat / 100.0)
+            + _JUDGE_WEIGHT * jr.fit
+            + _EVIDENCE_WEIGHT * s_ev
+        )
         # Standout chips must be GROUNDED in the record — the judge's free-text
         # signals can hallucinate facts (e.g. invent a gov-contract figure), so we
         # use only the deterministic, data-backed signals. The judge's qualitative
@@ -91,6 +99,7 @@ def rank_pool(
             RankedCompany(
                 record=record,
                 s_stat=round(s_stat, 2),
+                s_evidence=round(s_ev, 4),
                 s_final=round(s_final, 4),
                 judge_fit=round(jr.fit, 3),
                 judge_rationale=jr.rationale,

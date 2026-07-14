@@ -16,6 +16,7 @@ class RankedCompany(BaseModel):
 
     record: CompanyRecord
     s_stat: float                       # statistical fit, 0–100
+    s_evidence: float = 0.0             # deterministic enriched-evidence score, 0–1
     s_final: float                      # blended final score, 0–1
     judge_fit: float | None = None      # the judge's calibrated 0–1 fit
     judge_rationale: str = ""

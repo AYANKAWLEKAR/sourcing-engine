@@ -48,9 +48,11 @@ class Run(BaseModel):
     status: RunStatus = RunStatus.BUYBOX
     error: str | None = None
     ruleset_id: str | None = None
+    label: str | None = None  # user-given name for a saved run
     source_plan: list[SourcePlanItem] = Field(default_factory=list)
     coverage: dict = Field(default_factory=dict)
     shortlist: list[dict] | None = None  # RankedCompany dumps; None until ranked
+    conversation: list[dict] = Field(default_factory=list)  # [{role, text, at}]
     stage_history: list[dict] = Field(default_factory=list)  # [{status, at}]
     created_at: str | None = None
     updated_at: str | None = None

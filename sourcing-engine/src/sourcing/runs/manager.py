@@ -91,6 +91,7 @@ class RunManager:
             max_workers=s.run_workers, thread_name_prefix="run-pipeline"
         )
         self._sessions: dict[str, BuyBoxAgent] = {}
+        self._demo_keys: dict[str, str] = {}  # run_id -> demo cache key (if the prompt matched)
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------
@@ -98,11 +99,24 @@ class RunManager:
     # ------------------------------------------------------------------
 
     def start_run(self, message: str) -> StartResult:
+        from . import demo_cache
+
         run_id = f"run_{uuid.uuid4().hex[:12]}"
         self.store.create_run(run_id)
 
+        # The first buy-box message is what we match against the demo cache — it is
+        # deterministic, unlike the LLM-resolved ruleset the pipeline later runs on.
+        key = demo_cache.match_prompt(message)
+        if key:
+            with self._lock:
+                self._demo_keys[run_id] = key
+
         agent = self._agent_factory()
         turn = agent.step(message)
+
+        # Persist the exchange so the chat survives a restart and can be re-opened.
+        self.store.append_message(run_id, "user", message)
+        self.store.append_message(run_id, "assistant", turn.text)
 
         if turn.ruleset.confirmed:
             self._launch(run_id, turn.ruleset)
@@ -126,6 +140,8 @@ class RunManager:
             raise LookupError(f"no live buy-box session for {run_id} (server restarted?)")
 
         turn = agent.step(message)
+        self.store.append_message(run_id, "user", message)
+        self.store.append_message(run_id, "assistant", turn.text)
         if turn.ruleset.confirmed:
             with self._lock:
                 self._sessions.pop(run_id, None)
@@ -144,9 +160,12 @@ class RunManager:
         self.store.save_ruleset(ruleset)
         self.store.attach_ruleset(run_id, ruleset.ruleset_id)
 
+        with self._lock:
+            cache_key = self._demo_keys.pop(run_id, None)
+
         def _run() -> None:
             try:
-                self._pipeline.execute(run_id, ruleset)
+                self._pipeline.execute(run_id, ruleset, cache_key=cache_key)
             except Exception as exc:  # noqa: BLE001
                 # execute() already set FAILED; this guard catches store errors too.
                 warnings.warn(f"run {run_id} failed: {exc}", stacklevel=2)
@@ -169,3 +188,43 @@ class RunManager:
     def has_session(self, run_id: str) -> bool:
         with self._lock:
             return run_id in self._sessions
+
+    # ------------------------------------------------------------------
+    # Saved chats + conversational re-rank
+    # ------------------------------------------------------------------
+
+    def list_runs(self) -> list[dict]:
+        return self.store.list_runs()
+
+    def set_label(self, run_id: str, label: str) -> bool:
+        if self.store.get_run(run_id) is None:
+            return False
+        self.store.set_label(run_id, label)
+        return True
+
+    def list_selected(self, run_id: str) -> list[CompanyRecord]:
+        return self.store.list_selected(run_id)
+
+    def query_shortlist(self, run_id: str, message: str) -> dict | None:
+        """Conversational re-rank: NL → deterministic filter/sort over the shortlist.
+
+        Returns ``{"spec": ..., "results": [...]}`` or ``None`` if the run/shortlist
+        isn't available yet. Persists the exchange into the saved conversation.
+        """
+        from ..rank.pool_query import apply_query, parse_query
+
+        run = self.store.get_run(run_id)
+        if run is None or not run.shortlist:
+            return None
+
+        thesis = run.conversation[0]["text"] if run.conversation else ""
+        spec = parse_query(message, thesis)
+        results = apply_query(run.shortlist, spec)
+
+        self.store.append_message(run_id, "user", message)
+        self.store.append_message(
+            run_id,
+            "assistant",
+            f"Re-ranked to {len(results)} of {len(run.shortlist)} companies.",
+        )
+        return {"spec": spec.model_dump(), "results": results}

@@ -16,10 +16,17 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
 
+from ..agent.tools import summarize_ruleset
 from .schemas import (
     BuyBoxReply,
     CompanyResponse,
+    LabelRequest,
+    QueryRequest,
+    QueryResponse,
+    RunListResponse,
     RunStatusResponse,
+    RunSummary,
+    SelectedResponse,
     SelectRequest,
     SelectResponse,
     SourcesResponse,
@@ -55,8 +62,8 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index() -> RedirectResponse:
-        """Redirect the root to the Streamlit analyst UI (see `serve --ui`)."""
-        return RedirectResponse(os.environ.get("UI_URL", "http://localhost:8501"))
+        """Redirect the root to the Next.js frontend (see `serve --ui`)."""
+        return RedirectResponse(os.environ.get("UI_URL", "http://localhost:3000"))
 
     @app.post("/runs", response_model=BuyBoxReply, status_code=201)
     def start_run(body: StartRunRequest) -> BuyBoxReply:
@@ -69,6 +76,7 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
             agent_done=result.turn.done,
             needs_review=result.turn.needs_review,
             ruleset_confirmed=result.turn.ruleset.confirmed,
+            ruleset_state=summarize_ruleset(result.turn.ruleset),
         )
 
     @app.post("/runs/{run_id}/buybox", response_model=BuyBoxReply)
@@ -87,7 +95,12 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
             agent_done=turn.done,
             needs_review=turn.needs_review,
             ruleset_confirmed=turn.ruleset.confirmed,
+            ruleset_state=summarize_ruleset(turn.ruleset),
         )
+
+    @app.get("/runs", response_model=RunListResponse)
+    def list_runs() -> RunListResponse:
+        return RunListResponse(runs=[RunSummary(**r) for r in mgr().list_runs()])
 
     @app.get("/runs/{run_id}", response_model=RunStatusResponse)
     def get_run(run_id: str) -> RunStatusResponse:
@@ -99,13 +112,34 @@ def create_app(manager: RunManager | None = None) -> FastAPI:
             status=run.status.value,
             error=run.error,
             ruleset_id=run.ruleset_id,
+            label=run.label,
             source_plan=[p.model_dump() for p in run.source_plan],
             coverage=run.coverage,
             shortlist=run.shortlist,
+            conversation=run.conversation,
             stage_history=run.stage_history,
             created_at=run.created_at,
             updated_at=run.updated_at,
         )
+
+    @app.patch("/runs/{run_id}", response_model=RunStatusResponse)
+    def label_run(run_id: str, body: LabelRequest) -> RunStatusResponse:
+        if not mgr().set_label(run_id, body.label):
+            raise HTTPException(404, f"unknown run {run_id}")
+        return get_run(run_id)
+
+    @app.post("/runs/{run_id}/query", response_model=QueryResponse)
+    def query_run(run_id: str, body: QueryRequest) -> QueryResponse:
+        out = mgr().query_shortlist(run_id, body.message)
+        if out is None:
+            raise HTTPException(409, f"run {run_id} has no shortlist to query yet")
+        return QueryResponse(run_id=run_id, spec=out["spec"], results=out["results"])
+
+    @app.get("/runs/{run_id}/selected", response_model=SelectedResponse)
+    def get_selected(run_id: str) -> SelectedResponse:
+        if mgr().get_run(run_id) is None:
+            raise HTTPException(404, f"unknown run {run_id}")
+        return SelectedResponse(run_id=run_id, companies=mgr().list_selected(run_id))
 
     @app.get("/runs/{run_id}/companies/{abn}", response_model=CompanyResponse)
     def get_company(run_id: str, abn: str) -> CompanyResponse:
