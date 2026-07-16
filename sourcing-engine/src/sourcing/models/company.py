@@ -62,6 +62,13 @@ class MoatSignals(BaseModel):
     hard_assets: bool | None = None                  # signal extractor
     recurring_revenue_hint: bool | None = None       # signal extractor
     award_finalist: bool | None = None
+    # NATA accreditation (regulatory moat). Set by the NATA connector / cache.
+    nata_accreditation: bool = False
+    nata_site_count: int | None = None
+    nata_service_types: list[str] = Field(default_factory=list)
+    nata_accreditation_numbers: list[str] = Field(default_factory=list)
+    nata_states: list[str] = Field(default_factory=list)
+    nata_multistate: bool = False       # True if len(nata_states) > 1
 
 
 class AwardSignal(BaseModel):
