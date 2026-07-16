@@ -345,3 +345,27 @@ sources:
       fills ownership.pe_vc_backed — the private-equity/VC EXCLUDE that is otherwise
       screened but never verified — plus institutional ownership and a direct revenue
       estimate that beats the proxy. Runs shortlist-only on the ranked top-N.
+
+  - source_id: nata_accreditation
+    connector_type: scrape
+    fields_provided:
+      - moat_signals.regulatory_accreditation
+      - moat_signals.nata_accreditation
+      - moat_signals.nata_site_count
+      - moat_signals.nata_service_types
+      - moat_signals.nata_accreditation_numbers
+      - moat_signals.nata_states
+      - moat_signals.nata_multistate
+    sectors_covered: [services, industrial, professional]
+    geo_granularity: postcode
+    join_key: name
+    cost_tier: metered
+    freshness: weekly
+    reliability: text_medium
+    enabled: true
+    connector_built: true
+    actor_id: apify/playwright-scraper
+    connector_ref: sourcing.connectors.nata.NATAConnector
+    capability_doc: >
+      NATA accreditation register — Australian testing, inspection, certification
+      and calibration labs. Regulatory moat signal; private-only filter.

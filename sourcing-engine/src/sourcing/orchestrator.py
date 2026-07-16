@@ -96,6 +96,19 @@ def params_for_connector(
     keywords: list[str] = buybox.sector_keywords or []
     states: list[str] = buybox.states or []
 
+    # --- NATA: tile per state x include-keyword (its own param shape) --------
+    if source_id == "nata_accreditation":
+        from .config import get_settings
+
+        max_terms = get_settings().scrape_max_search_terms
+        terms = (keywords or ["testing"])[:max_terms]
+        target_states = states or ["NSW", "VIC", "QLD", "SA", "WA"]
+        return [
+            {"state": st, "search": kw, "filter_by": "service", "status": "active"}
+            for st in target_states
+            for kw in terms
+        ]
+
     # --- scrape connectors: tile per state ----------------------------------
     if source_id in _TILED_SOURCES:
         from .config import get_settings
