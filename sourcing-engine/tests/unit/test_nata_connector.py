@@ -144,6 +144,18 @@ def test_build_records_keeps_only_private():
     assert rec.provenance[0].source == "nata"
 
 
+def test_build_records_drops_low_confidence_private():
+    class _LowConfClassifier:
+        def classify(self, names):
+            return [Classification(name=n, category=PRIVATE, confidence=0.3, reasoning="")
+                    for n in names]
+
+    c = NATAConnector(classifier=_LowConfClassifier())
+    with pytest.warns(UserWarning):
+        recs = c._build_records(SITES)
+    assert recs == []
+
+
 def test_build_records_classifier_failure_returns_empty():
     class _Boom:
         def classify(self, names):

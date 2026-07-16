@@ -225,10 +225,20 @@ class NATAConnector(ScrapeConnector):
             return []
 
         records = []
+        dropped_low_conf = []
         for parent, cls in zip(parents, results, strict=False):
             if cls.category != PRIVATE:
                 continue
+            if cls.confidence < 0.5:
+                dropped_low_conf.append(parent["parent_org"])
+                continue
             records.append(self._to_record(parent, cls))
+        if dropped_low_conf:
+            warnings.warn(
+                f"NATAConnector: dropped {len(dropped_low_conf)} low-confidence "
+                f"private classifications: {dropped_low_conf}",
+                stacklevel=2,
+            )
         return records
 
     def _to_record(self, parent: dict, cls: Any) -> CompanyRecord:
