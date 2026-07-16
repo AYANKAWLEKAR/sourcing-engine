@@ -12,9 +12,13 @@ import math
 import re
 import warnings
 from collections import OrderedDict
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 
 from .base_scrape import ScrapeConnector
+
+if TYPE_CHECKING:
+    from ..models.company import CompanyRecord
 
 SOURCE_ID = "nata_accreditation"
 _MAX_PAGES = 25  # hard cap per (state x keyword) tile
@@ -88,6 +92,17 @@ class NATAConnector(ScrapeConnector):
     source_id: str = SOURCE_ID
     actor_id: str = "apify/playwright-scraper"
     cache_ttl_seconds: int = 7 * 24 * 3600  # weekly freshness
+
+    def __init__(self, *, cache: Any = None, client: Any = None, classifier: Any = None) -> None:
+        super().__init__(cache=cache, client=client)
+        self._classifier = classifier
+
+    def _get_classifier(self):
+        if self._classifier is None:
+            from ..classifiers.ownership_classifier import OwnershipClassifier
+
+            self._classifier = OwnershipClassifier()
+        return self._classifier
 
     def _build_url(self, state: str, search: str = "", filter_by: str = "service",
                    status: str = "active", page: int = 1) -> str:
@@ -174,6 +189,73 @@ class NATAConnector(ScrapeConnector):
         for g in groups.values():
             g["site_count"] = len(g["sites"])
         return list(groups.values())
+
+    def fetch(self, params: dict) -> list[CompanyRecord]:
+        return self._build_records(self._fetch_sites(params))
+
+    def normalize(self, record: CompanyRecord) -> CompanyRecord:
+        """Identity — records are already built (and classifier-gated) by ``fetch``.
+
+        The orchestrator calls ``normalize(r) for r in raws``; since ``fetch``
+        already returns finished ``CompanyRecord``s here, this just passes them
+        through unchanged.
+        """
+        return record
+
+    def _build_records(self, raws: list[dict]) -> list[CompanyRecord]:
+        """Aggregate raw site rows into parents, classify, and keep only private."""
+        from ..classifiers.ownership_classifier import PRIVATE
+
+        parents = self._group_by_parent(raws)
+        if not parents:
+            return []
+        try:
+            results = self._get_classifier().classify([p["parent_org"] for p in parents])
+        except Exception as exc:  # noqa: BLE001 - degrade to no NATA rows, never raise
+            warnings.warn(f"NATAConnector: classifier failed, dropping NATA rows: {exc}", stacklevel=2)
+            return []
+
+        records = []
+        for parent, cls in zip(parents, results, strict=False):
+            if cls.category != PRIVATE:
+                continue
+            records.append(self._to_record(parent, cls))
+        return records
+
+    def _to_record(self, parent: dict, cls: Any) -> CompanyRecord:
+        from ..models.company import CompanyRecord, Location, MoatSignals, Provenance, Sector
+
+        states = parent["states"]
+        counts = parent["state_counts"]
+        primary = max(states, key=lambda s: counts.get(s, 0)) if states else None
+        acc_nums = parent["accreditation_numbers"]
+        locator = f"Accreditation #{acc_nums[0]}" if acc_nums else "NATA"
+        if len(acc_nums) > 1:
+            locator += f" + {len(acc_nums) - 1} others"
+        flags = []
+        if 0.5 <= cls.confidence < 0.8:
+            flags.append("nata_classification_uncertain")
+        return CompanyRecord(
+            entity_id=f"nata:{parent['normalized']}",
+            abn=None,
+            legal_name=parent["parent_org"],
+            country="Australia",
+            location=Location(state=primary),
+            sector=Sector(category_text=list(parent["service_types"])),
+            moat_signals=MoatSignals(
+                regulatory_accreditation=True,
+                nata_accreditation=True,
+                nata_site_count=parent["site_count"],
+                nata_service_types=list(parent["service_types"]),
+                nata_accreditation_numbers=list(acc_nums),
+                nata_states=list(states),
+                nata_multistate=len(states) > 1,
+            ),
+            provenance=[Provenance(field="nata_accreditation", source="nata",
+                                   locator=locator, confidence=0.95)],
+            flags=flags,
+            resolution_confidence=0.0,
+        )
 
 
 _STATE_RE = re.compile(r"\b(NSW|VIC|QLD|SA|WA|NT|ACT|TAS)\b")
