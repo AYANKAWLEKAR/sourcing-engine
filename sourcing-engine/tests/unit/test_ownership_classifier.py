@@ -41,6 +41,34 @@ def test_unparseable_falls_back_to_unclear():
     assert out[0].category == "unclear"
 
 
+def test_extract_handles_index_keyed_object():
+    # qwen2.5:3b sometimes returns a dict keyed by index instead of a JSON array.
+    payload = {
+        "[0]": {"category": "private_commercial", "confidence": 0.9, "reasoning": "x"},
+        "[1]": {"category": "public_sector", "confidence": 0.9, "reasoning": "y"},
+    }
+
+    def _c(prompt: str) -> str:
+        return json.dumps(payload)
+
+    clf = OwnershipClassifier(complete=_c, batch_size=10)
+    out = clf.classify(["A", "B"])
+    assert [c.category for c in out] == [PRIVATE, "public_sector"]
+
+
+def test_extract_handles_single_object():
+    # For a 1-item batch, qwen sometimes returns a single object instead of a 1-element array.
+    payload = {"category": "private_commercial", "confidence": 0.8, "reasoning": "x"}
+
+    def _c(prompt: str) -> str:
+        return json.dumps(payload)
+
+    clf = OwnershipClassifier(complete=_c)
+    out = clf.classify(["Solo"])
+    assert len(out) == 1
+    assert out[0].category == PRIVATE
+
+
 def test_order_mismatch_falls_back_to_per_item():
     # A 2-item batch that returns only 1 result triggers per-item reclassification.
     calls = {"n": 0}

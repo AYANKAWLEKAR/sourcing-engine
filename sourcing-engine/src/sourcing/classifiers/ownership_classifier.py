@@ -111,13 +111,34 @@ class OwnershipClassifier:
             data = json.loads(text)
         except json.JSONDecodeError:
             m = re.search(r"\[.*\]", text, re.DOTALL)
-            if not m:
-                return None
-            try:
-                data = json.loads(m.group(0))
-            except json.JSONDecodeError:
-                return None
-        return data if isinstance(data, list) else None
+            if m:
+                try:
+                    data = json.loads(m.group(0))
+                except json.JSONDecodeError:
+                    data = None
+            else:
+                data = None
+            if data is None:
+                m = re.search(r"\{.*\}", text, re.DOTALL)
+                if not m:
+                    return None
+                try:
+                    data = json.loads(m.group(0))
+                except json.JSONDecodeError:
+                    return None
+        return OwnershipClassifier._coerce_to_list(data)
+
+    @staticmethod
+    def _coerce_to_list(data: object) -> list[dict] | None:
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            if "category" in data:
+                return [data]
+            # Index-keyed object (e.g. {"[0]": {...}, "[1]": {...}}) — dicts preserve
+            # insertion order in Python 3.7+, so this retains the model's ordering.
+            return list(data.values())
+        return None
 
     @staticmethod
     def _to_classification(name: str, obj: dict) -> Classification:
