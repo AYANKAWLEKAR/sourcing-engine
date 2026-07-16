@@ -133,6 +133,10 @@ class OwnershipClassifier:
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
+            categories = data.get("categories")
+            if isinstance(categories, list):
+                # qwen sometimes wraps the array in a {"categories": [...]} envelope.
+                return categories
             if "category" in data:
                 return [data]
             # Index-keyed object (e.g. {"[0]": {...}, "[1]": {...}}) — dicts preserve

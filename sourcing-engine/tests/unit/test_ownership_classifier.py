@@ -56,6 +56,23 @@ def test_extract_handles_index_keyed_object():
     assert [c.category for c in out] == [PRIVATE, "public_sector"]
 
 
+def test_extract_handles_categories_envelope():
+    # qwen sometimes wraps the array as {"categories": [...]}.
+    payload = {
+        "categories": [
+            {"category": "private_commercial", "confidence": 0.9, "reasoning": "x"},
+            {"category": "public_sector", "confidence": 0.9, "reasoning": "y"},
+        ]
+    }
+
+    def _c(prompt: str) -> str:
+        return json.dumps(payload)
+
+    clf = OwnershipClassifier(complete=_c, batch_size=10)
+    out = clf.classify(["A", "B"])
+    assert [c.category for c in out] == [PRIVATE, "public_sector"]
+
+
 def test_extract_handles_single_object():
     # For a 1-item batch, qwen sometimes returns a single object instead of a 1-element array.
     payload = {"category": "private_commercial", "confidence": 0.8, "reasoning": "x"}
