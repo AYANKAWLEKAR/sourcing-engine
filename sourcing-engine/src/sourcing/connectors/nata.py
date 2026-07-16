@@ -18,6 +18,7 @@ from .base_scrape import ScrapeConnector
 
 SOURCE_ID = "nata_accreditation"
 _MAX_PAGES = 25  # hard cap per (state x keyword) tile
+_RESULTS_PER_PAGE = 20  # NATA default page size; verify empirically on first live run
 
 # Mirror the entity resolver's name normalization (entity_resolution.py:28,72) so
 # NATA parents aggregate the same way the resolver later matches them.
@@ -57,13 +58,30 @@ async function pageFunction(context) {
         accreditation_number: acc ? acc[1] : null,
         site_number: site ? site[1] : null,
         address: text.split('\n').pop().trim(),
-        _total_results: total,
       });
     }
-    return rows;
+    return [{ _sentinel: true, _total_results: total }, ...rows];
   });
 }
 """
+
+
+def _split_total(rows: list[dict], search: str) -> tuple[int | None, list[dict]]:
+    """Split the leading sentinel row(s) from real card rows.
+
+    Returns ``(total, card_rows)`` — ``total`` is the sentinel's ``_total_results``
+    (``None`` if no sentinel was found), and ``card_rows`` are the remaining rows
+    with ``service`` defaulted from ``search``.
+    """
+    total = None
+    cards = []
+    for r in rows:
+        if r.get("_sentinel"):
+            total = r.get("_total_results")
+        else:
+            r.setdefault("service", search)
+            cards.append(r)
+    return total, cards
 
 
 class NATAConnector(ScrapeConnector):
@@ -81,10 +99,11 @@ class NATAConnector(ScrapeConnector):
         state = params.get("state", "")
         search = params.get("search", "")
         pages = min(int(params.get("pages", 1)), _MAX_PAGES)
+        start = max(1, int(params.get("start_page", 1)))
         filter_by = params.get("filter_by", "service")
         status = params.get("status", "active")
         urls = [{"url": self._build_url(state, search, filter_by, status, p)}
-                for p in range(1, pages + 1)]
+                for p in range(start, pages + 1)]
         return {
             "startUrls": urls,
             "pageFunction": _PAGE_FUNCTION,
@@ -95,35 +114,36 @@ class NATAConnector(ScrapeConnector):
         }
 
     def _fetch_sites(self, params: dict) -> list[dict]:
-        """Run tile page 1, size the sweep from _total_results, fetch the rest."""
+        """Run tile page 1, size the sweep from the sentinel's total, fetch the rest."""
         first = self._run_actor(self.build_input({**params, "pages": 1}))
-        if not first:
+        total, card_rows = _split_total(first, params.get("search", ""))
+        if total and not card_rows:
+            warnings.warn(
+                "NATAConnector: non-zero results but 0 sites extracted — NATA page "
+                "structure may have changed",
+                stacklevel=2,
+            )
             return []
-        total = first[0].get("_total_results")
-        for r in first:
-            r.setdefault("service", params.get("search", ""))
+        if not card_rows:
+            return []
         if not total:
-            return first
-        pages = min(math.ceil(total / 20), _MAX_PAGES)
+            return card_rows
+        pages = min(math.ceil(total / _RESULTS_PER_PAGE), _MAX_PAGES)
         if pages <= 1:
-            return first
-        rest = self._run_actor(self.build_input({**params, "pages": pages}))
-        for r in rest:
-            r.setdefault("service", params.get("search", ""))
+            return card_rows
+        _, rest_rows = _split_total(
+            self._run_actor(self.build_input({**params, "start_page": 2, "pages": pages})),
+            params.get("search", ""),
+        )
         # dedupe by (accreditation_number, site_number)
         seen: set[tuple] = set()
         out: list[dict] = []
-        for r in [*first, *rest]:
+        for r in [*card_rows, *rest_rows]:
             key = (r.get("accreditation_number"), r.get("site_number"))
             if key in seen:
                 continue
             seen.add(key)
             out.append(r)
-        if total and not out:
-            warnings.warn(
-                "NATAConnector: non-zero results but 0 extracted — site structure may have changed",
-                stacklevel=2,
-            )
         return out
 
     def _group_by_parent(self, raws: list[dict]) -> list[dict]:
