@@ -12,6 +12,7 @@ import math
 import re
 import warnings
 from collections import OrderedDict
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode
 
@@ -193,6 +194,10 @@ class NATAConnector(ScrapeConnector):
     def fetch(self, params: dict) -> list[CompanyRecord]:
         return self._build_records(self._fetch_sites(params))
 
+    def load(self, records: list, cache: NATACache) -> None:
+        """Persist a sweep's parents into the Plan-B cache."""
+        cache.upsert(records)
+
     def normalize(self, record: CompanyRecord) -> CompanyRecord:
         """Identity — records are already built (and classifier-gated) by ``fetch``.
 
@@ -267,3 +272,55 @@ def _state_of(r: dict) -> str | None:
         return st
     m = _STATE_RE.search(r.get("address") or "")
     return m.group(1) if m else None
+
+
+class NATACache:
+    """DuckDB-backed parent cache in its OWN file (never touches bulk.duckdb)."""
+
+    def __init__(self, db_path: str | Path) -> None:
+        self._path = str(db_path)
+        self._ensure()
+
+    def _conn(self):
+        import duckdb
+
+        return duckdb.connect(self._path)
+
+    def _ensure(self) -> None:
+        with self._conn() as con:
+            con.execute(
+                "CREATE TABLE IF NOT EXISTS nata_parents ("
+                "normalized VARCHAR PRIMARY KEY, legal_name VARCHAR, primary_state VARCHAR,"
+                "site_count INTEGER, service_types VARCHAR, accreditation_numbers VARCHAR,"
+                "states VARCHAR, multistate BOOLEAN)"
+            )
+
+    def upsert(self, records: list) -> None:
+        import json
+
+        with self._conn() as con:
+            for r in records:
+                m = r.moat_signals
+                con.execute(
+                    "INSERT OR REPLACE INTO nata_parents VALUES (?,?,?,?,?,?,?,?)",
+                    [normalize_org_name(r.legal_name or ""), r.legal_name,
+                     r.location.state, m.nata_site_count,
+                     json.dumps(m.nata_service_types), json.dumps(m.nata_accreditation_numbers),
+                     json.dumps(m.nata_states), m.nata_multistate],
+                )
+
+    def find_by_normalized_name(self, name: str, state: str | None = None) -> dict | None:
+        import json
+
+        with self._conn() as con:
+            row = con.execute(
+                "SELECT legal_name, primary_state, site_count, service_types,"
+                " accreditation_numbers, states, multistate FROM nata_parents"
+                " WHERE normalized = ?", [normalize_org_name(name)],
+            ).fetchone()
+        if row is None:
+            return None
+        return {"legal_name": row[0], "primary_state": row[1], "nata_site_count": row[2],
+                "nata_service_types": json.loads(row[3]),
+                "nata_accreditation_numbers": json.loads(row[4]),
+                "nata_states": json.loads(row[5]), "nata_multistate": row[6]}
