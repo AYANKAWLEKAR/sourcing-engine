@@ -54,3 +54,16 @@ def test_plan_b_absent_cache_is_noop():
                         location=Location(state="NSW"))
     _node(None).enrich_one(rec, _bb())  # nata_cache=None
     assert rec.moat_signals.nata_accreditation is False
+
+
+class _BoomNataCache:
+    def find_by_normalized_name(self, name, state=None):
+        raise RuntimeError("duckdb table missing / query error")
+
+
+def test_plan_b_cache_error_is_nonfatal():
+    rec = CompanyRecord(entity_id="x", abn="1" * 11, legal_name="Acme Testing Pty Ltd",
+                        location=Location(state="NSW"))
+    # Should not raise — the guarded block swallows the cache's exception.
+    _node(_BoomNataCache()).enrich_one(rec, _bb())
+    assert rec.moat_signals.nata_accreditation is False

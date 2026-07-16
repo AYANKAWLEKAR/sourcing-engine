@@ -39,32 +39,32 @@ def normalize_org_name(name: str) -> str:
 
 # The browser-side extractor. Kept as a string — it runs inside the Apify actor,
 # not in this process. Selectors match on class-contains + structure, not exact
-# Tailwind class names, so minor CSS churn doesn't break it.
+# Tailwind class names, so minor CSS churn doesn't break it. Browser-validated
+# against the live nata.com.au result cards (see Task 9): cards are
+# div.items-center.md:justify-between containing "Accreditation No." — there
+# are no /site/ links on the live page.
 _PAGE_FUNCTION = r"""
 async function pageFunction(context) {
-  const { page, request } = context;
-  await page.waitForSelector('div:has-text("results")', { timeout: 20000 }).catch(() => {});
+  const { page } = context;
+  await page.waitForSelector('body', { timeout: 20000 });
+  await page.waitForTimeout(1500);
   return await page.evaluate(() => {
-    const rows = [];
-    const cards = Array.from(document.querySelectorAll('div')).filter(
-      d => d.querySelector('a[href*="/site/"]'));
-    let total = null;
-    const rc = document.body.innerText.match(/([\d,]+)\s+results/i);
-    if (rc) total = parseInt(rc[1].replace(/,/g, ''), 10);
-    for (const card of cards) {
+    const bodyText = document.body.innerText || '';
+    const rc = bodyText.match(/([\d,]+)\s+results/i);
+    const total = rc ? parseInt(rc[1].replace(/,/g, ''), 10) : null;
+    const cards = Array.from(document.querySelectorAll('div[class*="justify-between"][class*="items-center"]'))
+      .filter(d => /Accreditation No/i.test(d.innerText) && /Site No/i.test(d.innerText));
+    const rows = cards.map(card => {
       const text = card.innerText || '';
-      const acc = text.match(/Accreditation No\.?\s*(\d+)/i);
-      const site = text.match(/Site No\.?\s*(\d+)/i);
-      const parentP = card.querySelector('p');
-      const link = card.querySelector('a[href*="/site/"]');
-      rows.push({
-        parent_org: parentP ? parentP.innerText.trim() : '',
-        site_name: link ? link.innerText.trim() : '',
-        accreditation_number: acc ? acc[1] : null,
-        site_number: site ? site[1] : null,
-        address: text.split('\n').pop().trim(),
-      });
-    }
+      const org = (Array.from(card.querySelectorAll('p'))
+        .map(p => p.innerText.trim())
+        .find(t => t && !/^(Accreditation|Site)\s+No/i.test(t))) || '';
+      const acc = (text.match(/Accreditation No\.?\s*(\d+)/i) || [])[1] || null;
+      const site = (text.match(/Site No\.?\s*(\d+)/i) || [])[1] || null;
+      const addrSpan = card.querySelector('span[class*="text-gray-600"]');
+      const address = addrSpan ? addrSpan.innerText.replace(/\s+/g, ' ').trim() : '';
+      return { parent_org: org, site_name: org, accreditation_number: acc, site_number: site, address };
+    });
     return [{ _sentinel: true, _total_results: total }, ...rows];
   });
 }
@@ -106,7 +106,7 @@ class NATAConnector(ScrapeConnector):
         return self._classifier
 
     def _build_url(self, state: str, search: str = "", filter_by: str = "service",
-                   status: str = "active", page: int = 1) -> str:
+                   status: str = "", page: int = 1) -> str:
         params = urlencode({"post_type": "site", "s": search, "filter": filter_by,
                             "state": state, "status": status})
         return f"https://nata.com.au/page/{page}/?{params}"
@@ -117,13 +117,17 @@ class NATAConnector(ScrapeConnector):
         pages = min(int(params.get("pages", 1)), _MAX_PAGES)
         start = max(1, int(params.get("start_page", 1)))
         filter_by = params.get("filter_by", "service")
-        status = params.get("status", "active")
+        status = params.get("status", "")
         urls = [{"url": self._build_url(state, search, filter_by, status, p)}
                 for p in range(start, pages + 1)]
         return {
             "startUrls": urls,
             "pageFunction": _PAGE_FUNCTION,
-            "waitUntil": ["networkidle2"],
+            # apify/playwright-scraper's input schema wants a single string here
+            # (not an array), and only accepts Playwright's own wait states —
+            # "networkidle2" is a Puppeteer-ism the actor rejects. Confirmed live:
+            # allowed values are "networkidle" | "load" | "domcontentloaded".
+            "waitUntil": "networkidle",
             "proxyConfiguration": {"useApifyProxy": True},
             # carry the search term through so normalize can seed service types
             "_search": search,

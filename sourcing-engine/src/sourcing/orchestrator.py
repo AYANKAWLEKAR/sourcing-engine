@@ -104,7 +104,7 @@ def params_for_connector(
         terms = (keywords or ["testing"])[:max_terms]
         target_states = states or ["NSW", "VIC", "QLD", "SA", "WA"]
         return [
-            {"state": st, "search": kw, "filter_by": "service", "status": "active"}
+            {"state": st, "search": kw, "filter_by": "service", "status": ""}
             for st in target_states
             for kw in terms
         ]

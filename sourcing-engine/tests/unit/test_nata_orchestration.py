@@ -12,7 +12,9 @@ def test_nata_params_tile_state_x_keyword():
     combos = {(t["state"], t["search"]) for t in tiles}
     assert ("NSW", "testing") in combos
     assert ("VIC", "calibration") in combos
-    assert all(t["status"] == "active" for t in tiles)
+    # NATA's "Active" filter is the EMPTY value on the live site — status="active"
+    # returns 0 results for every query (verified in-browser, Task 9).
+    assert all(t["status"] == "" for t in tiles)
 
 
 def test_nata_registered_as_scrape_connector():

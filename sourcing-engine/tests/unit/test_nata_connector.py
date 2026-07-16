@@ -56,7 +56,9 @@ def test_build_url_encodes_params():
     url = c._build_url(state="NSW", search="testing", page=2)
     assert url.startswith("https://nata.com.au/page/2/?")
     assert "post_type=site" in url and "state=NSW" in url and "s=testing" in url
-    assert "status=active" in url
+    # NATA's "Active" filter option is the EMPTY value; status=active returns
+    # 0 results on the live site (verified in-browser). status= (empty) is correct.
+    assert "status=" in url and "status=active" not in url
 
 
 def test_normalize_org_name_strips_suffix_and_case():
