@@ -86,6 +86,36 @@ def test_extract_handles_single_object():
     assert out[0].category == PRIVATE
 
 
+def test_extract_handles_nested_single_element_list():
+    # qwen2.5:3b intermittently returns a nested [[{...}]] on the single-item
+    # (per-item reclassification) path. Observed live in test_classifier_live_qwen:
+    # the inner list reached _to_classification and crashed with
+    # AttributeError: 'list' object has no attribute 'get'. It must unwrap cleanly.
+    payload = [[{"category": "private_commercial", "confidence": 1.0, "reasoning": "x"}]]
+
+    def _c(prompt: str) -> str:
+        return json.dumps(payload)
+
+    clf = OwnershipClassifier(complete=_c)
+    out = clf.classify(["Solo"])
+    assert len(out) == 1
+    assert out[0].category == PRIVATE
+    assert out[0].confidence == 1.0
+
+
+def test_malformed_element_degrades_to_unclear_not_crash():
+    # A batch whose elements are not dicts (bare string / number) must not raise —
+    # each malformed element degrades to "unclear" so one bad item can't kill the batch.
+    def _c(prompt: str) -> str:
+        return json.dumps(["not a dict", 42])
+
+    clf = OwnershipClassifier(complete=_c, batch_size=10)
+    out = clf.classify(["A", "B"])
+    assert len(out) == 2
+    assert all(c.category == "unclear" for c in out)
+    assert [c.name for c in out] == ["A", "B"]
+
+
 def test_order_mismatch_falls_back_to_per_item():
     # A 2-item batch that returns only 1 result triggers per-item reclassification.
     calls = {"n": 0}

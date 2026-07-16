@@ -145,7 +145,15 @@ class OwnershipClassifier:
         return None
 
     @staticmethod
-    def _to_classification(name: str, obj: dict) -> Classification:
+    def _to_classification(name: str, obj: object) -> Classification:
+        # Defensive coercion: qwen2.5:3b intermittently nests a single classification
+        # inside a one-element list (``[[{...}]]`` → element is ``[{...}]``). Unwrap it.
+        if isinstance(obj, list):
+            obj = obj[0] if len(obj) == 1 and isinstance(obj[0], dict) else None
+        if not isinstance(obj, dict):
+            # Any other malformed element (bare string/number, wrong-length list)
+            # degrades to "unclear" rather than raising and killing the whole batch.
+            return Classification(name=name, category="unclear", confidence=0.0, reasoning="")
         cat = obj.get("category")
         if cat not in CATEGORIES:
             cat = "unclear"
