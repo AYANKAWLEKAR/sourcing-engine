@@ -1,0 +1,11 @@
+[
+  {"parent_org": "Acme Testing Pty Ltd", "site_name": "Acme Sydney Lab",
+   "accreditation_number": "2771", "site_number": "1", "state": "NSW",
+   "address": "12 Test St, Sydney NSW 2000", "service": "testing"},
+  {"parent_org": "Acme Testing Pty. Ltd.", "site_name": "Acme Melbourne Lab",
+   "accreditation_number": "2771", "site_number": "2", "state": "VIC",
+   "address": "9 Lab Rd, Melbourne VIC 3000", "service": "testing"},
+  {"parent_org": "NSW Health Pathology", "site_name": "RPA Pathology",
+   "accreditation_number": "100", "site_number": "5", "state": "NSW",
+   "address": "50 Missenden Rd, Camperdown NSW 2050", "service": "testing"}
+]
