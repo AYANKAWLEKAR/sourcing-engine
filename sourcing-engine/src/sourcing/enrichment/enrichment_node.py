@@ -34,6 +34,7 @@ class EnrichmentNode:
         ipgod: Any = None,
         asx: Any = None,
         record_cache: Any = None,
+        nata_cache: Any = None,
     ):
         # Lazy defaults so importing needs no credentials; callers inject fakes in tests.
         if austender is None:
@@ -47,6 +48,7 @@ class EnrichmentNode:
         self.asx = asx      # None → skip listed-entity check
         # None → no persistent record cache (external calls always run).
         self.record_cache = record_cache
+        self.nata_cache = nata_cache  # None → skip Plan B NATA lookup
 
     def enrich_pool(
         self,
@@ -119,6 +121,27 @@ class EnrichmentNode:
 
             # 1. AusTender — cheap, free, direct ABN join
             self.austender.enrich_record(rec)
+
+            # Plan B: annotate with NATA accreditation from the sweep cache.
+            # Guarded + non-fatal: a missing table or query error is a silent no-op.
+            if self.nata_cache is not None and rec.legal_name:
+                try:
+                    hit = self.nata_cache.find_by_normalized_name(
+                        rec.legal_name, rec.location.state)
+                    if hit:
+                        m = rec.moat_signals
+                        m.regulatory_accreditation = True
+                        m.nata_accreditation = True
+                        m.nata_site_count = hit["nata_site_count"]
+                        m.nata_service_types = hit["nata_service_types"]
+                        m.nata_accreditation_numbers = hit["nata_accreditation_numbers"]
+                        m.nata_states = hit["nata_states"]
+                        m.nata_multistate = hit["nata_multistate"]
+                        from ..models.company import Provenance
+                        rec.provenance.append(Provenance(
+                            field="nata_accreditation", source="nata_cache", confidence=0.9))
+                except Exception:
+                    pass
 
             # 2. Website text (Apify) — the expensive external call the cache saves.
             website = rec.contacts_min.get("website")
