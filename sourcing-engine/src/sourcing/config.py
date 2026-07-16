@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     # Agent loop
     max_clarifying_questions: int = 6
 
+    # Ownership classifier (NATA private/public filter). Separate from LLM_PROVIDER
+    # so the primary LLM can be Claude while classification runs locally on Ollama.
+    classifier_provider: str = "ollama"   # ollama | anthropic
+    classifier_model: str = "qwen2.5:3b"
+    classifier_ollama_url: str = "http://localhost:11434"
+    classifier_timeout_seconds: int = 30
+    classifier_batch_size: int = 10
+
     # ABN Lookup API (https://abr.business.gov.au/Tools/WebServices)
     abn_lookup_guid: str = ""
 
