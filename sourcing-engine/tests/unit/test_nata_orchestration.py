@@ -24,3 +24,11 @@ def test_nata_registered_as_scrape_connector():
     assert entry.connector_type.value == "scrape"
     assert entry.connector_ref.endswith("nata.NATAConnector")
     assert entry.enabled is True
+
+
+def test_nata_uses_domcontentloaded_for_js_rendered_results():
+    from sourcing.connectors.nata import NATAConnector
+
+    assert NATAConnector().build_input({"state": "NSW", "search": "water"})["waitUntil"] == (
+        "domcontentloaded"
+    )

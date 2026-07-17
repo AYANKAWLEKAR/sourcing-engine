@@ -81,22 +81,43 @@ class ASICBulkConnector(BulkConnector):
         """Create the typed ``asic_companies`` table from the CSV and index it."""
         csv = self._csv_path.replace("'", "''")  # escape single quotes for SQL literal
         self.conn.execute(f"DROP TABLE IF EXISTS {self.table_name}")
+
+        # Probe the CSV headers using a cheap metadata query
+        desc_rows = self.conn.execute(
+            f"SELECT * FROM read_csv('{csv}', delim='\\t', header=true, all_varchar=true, normalize_names=true, sample_size=-1, ignore_errors=true) LIMIT 0"
+        ).description
+        cols = [r[0] for r in desc_rows]
+
+        # Map actual columns dynamically to support header corruptions/renamings
+        company_name_col = next((c for c in cols if c == "company_name" or c.endswith("company_name")), "company_name")
+        acn_col = next((c for c in cols if c == "acn"), "acn")
+        abn_col = next((c for c in cols if c == "abn"), "abn")
+        current_name_col = next((c for c in cols if c == "current_name"), "current_name")
+        indicator_col = next((c for c in cols if c == "current_name_indicator" or c.endswith("name_indicator") or c.endswith("indicator")), "current_name_indicator")
+        type_col = next((c for c in cols if c == "_type" or c == "type"), "_type")
+        class_col = next((c for c in cols if c == "_class" or c == "class"), "_class")
+        sub_class_col = next((c for c in cols if c == "sub_class"), "sub_class")
+        status_col = next((c for c in cols if c == "status"), "status")
+        reg_date_col = next((c for c in cols if c == "date_of_registration" or c.endswith("registration")), "date_of_registration")
+        dereg_date_col = next((c for c in cols if c == "date_of_deregistration" or c.endswith("deregistration")), "date_of_deregistration")
+        state_col = next((c for c in cols if c == "previous_state_of_registration" or c == "previous_state"), "previous_state_of_registration")
+
         self.conn.execute(
             f"""
             CREATE TABLE {self.table_name} AS
             SELECT
-                company_name,
-                acn,
-                abn,
-                current_name,
-                current_name_indicator                           AS name_indicator,
-                _type                                            AS type,
-                _class                                           AS class,
-                sub_class,
-                status,
-                try_strptime(date_of_registration,   '%d/%m/%Y')::DATE AS registration_date,
-                try_strptime(date_of_deregistration, '%d/%m/%Y')::DATE AS deregistration_date,
-                previous_state_of_registration                   AS previous_state
+                {company_name_col}                               AS company_name,
+                {acn_col}                                        AS acn,
+                {abn_col}                                        AS abn,
+                {current_name_col}                               AS current_name,
+                {indicator_col}                                  AS name_indicator,
+                {type_col}                                       AS type,
+                {class_col}                                      AS class,
+                {sub_class_col}                                  AS sub_class,
+                {status_col}                                     AS status,
+                try_strptime({reg_date_col},   '%d/%m/%Y')::DATE AS registration_date,
+                try_strptime({dereg_date_col}, '%d/%m/%Y')::DATE AS deregistration_date,
+                {state_col}                                      AS previous_state
             FROM read_csv(
                 '{csv}',
                 delim='\t', header=true, all_varchar=true,

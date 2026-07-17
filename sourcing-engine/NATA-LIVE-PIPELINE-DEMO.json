@@ -1,0 +1,615 @@
+{
+  "executed_at": "2026-07-16T20:54:27.048955+00:00",
+  "synthetic_prompt": "Find a privately owned, NATA-accredited NSW water-testing laboratory, established for at least five years, serving B2B customers.",
+  "live_services": [
+    "NATA register via Apify Playwright",
+    "ABN Lookup API",
+    "ASIC local spine",
+    "AusTender",
+    "Anthropic enrichment and ranking judge",
+    "Anthropic ownership classification"
+  ],
+  "status": "complete",
+  "coverage": {
+    "n_raw": 2,
+    "n_pool": 2,
+    "n_resolved": 2,
+    "n_shortlist": 2
+  },
+  "source_plan": [
+    {
+      "source_id": "nata_accreditation",
+      "connector_type": "scrape",
+      "score": 1.0,
+      "rationale": "The synthetic buy-box explicitly requires NATA accreditation.",
+      "fields_contributed": [
+        "moat_signals.nata_accreditation"
+      ],
+      "cost_tier": "metered",
+      "invariant_tags": []
+    }
+  ],
+  "resolved_and_enriched_companies": [
+    {
+      "abn": "87091045760",
+      "selected": false,
+      "record": {
+        "entity_id": "nata:j & j pipe testing",
+        "abn": "87091045760",
+        "acn": "091045760",
+        "legal_name": "J & J PIPE TESTING PTY. LTD.",
+        "trading_names": [],
+        "country": "Australia",
+        "location": {
+          "state": "NSW",
+          "postcode": "2567",
+          "suburb": null,
+          "lat": null,
+          "lng": null,
+          "km_to_capital": null
+        },
+        "sector": {
+          "anzsic": [
+            "3320"
+          ],
+          "anzsic_confidence": 0.75,
+          "category_text": [
+            "water"
+          ],
+          "keyword_hits": [
+            "water"
+          ],
+          "keyword_density": 0.5,
+          "exclude_hits": []
+        },
+        "age": {
+          "abn_registered": null,
+          "asic_registered": "1999-12-24",
+          "years_operating": null
+        },
+        "size": {
+          "employee_count": null,
+          "employee_source": null,
+          "review_count": null,
+          "revenue_est_aud": null,
+          "revenue_confidence": null,
+          "ebitda_est_aud": null,
+          "ebitda_confidence": null
+        },
+        "ownership": {
+          "structure_guess": null,
+          "pe_vc_backed": null,
+          "listed_entity": null,
+          "institutional_on_register": null
+        },
+        "business_model": "B2B",
+        "moat_signals": {
+          "ip": null,
+          "ip_count": null,
+          "ip_types": [],
+          "gov_contracts": false,
+          "gov_contract_value_aud": null,
+          "gov_contract_count": null,
+          "gov_contract_agencies": [],
+          "regulatory_accreditation": true,
+          "physical_ops": true,
+          "hard_assets": true,
+          "recurring_revenue_hint": true,
+          "award_finalist": null,
+          "nata_accreditation": true,
+          "nata_site_count": 1,
+          "nata_service_types": [
+            "water"
+          ],
+          "nata_accreditation_numbers": [
+            "14400"
+          ],
+          "nata_states": [
+            "NSW"
+          ],
+          "nata_multistate": false
+        },
+        "award_signals": [],
+        "contacts_min": {},
+        "website_text_raw": null,
+        "deferred_assessment": {},
+        "provenance": [
+          {
+            "field": "nata_accreditation",
+            "source": "nata",
+            "locator": "Accreditation #14400",
+            "fetched_at": null,
+            "confidence": 0.95
+          },
+          {
+            "field": "abn",
+            "source": "abn_lookup_api",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.695
+          },
+          {
+            "field": "legal_name",
+            "source": "asic_company_dataset",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.95
+          },
+          {
+            "field": "sector",
+            "source": "signal_extractor",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.5
+          },
+          {
+            "field": "business_model",
+            "source": "signal_extractor",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.5
+          }
+        ],
+        "screen": {
+          "status": "survivor",
+          "score": null,
+          "flags": [],
+          "matched": [],
+          "missed": []
+        },
+        "flags": [
+          "abn_match_uncertain",
+          "ipgod_checked_no_ip",
+          "austender_checked_no_contracts",
+          "unverified:sector:from_category_only",
+          "unverified:years_operating",
+          "unverified:ebitda_aud:no_employee_count"
+        ],
+        "resolution_confidence": 0.6945652173913044
+      }
+    },
+    {
+      "abn": "33889125990",
+      "selected": false,
+      "record": {
+        "entity_id": "nata:turner family enterprises",
+        "abn": "33889125990",
+        "acn": null,
+        "legal_name": "S.W TURNER & T.L TURNER",
+        "trading_names": [],
+        "country": "Australia",
+        "location": {
+          "state": "NSW",
+          "postcode": "2488",
+          "suburb": null,
+          "lat": null,
+          "lng": null,
+          "km_to_capital": null
+        },
+        "sector": {
+          "anzsic": [],
+          "anzsic_confidence": null,
+          "category_text": [
+            "water"
+          ],
+          "keyword_hits": [
+            "water"
+          ],
+          "keyword_density": 0.5,
+          "exclude_hits": []
+        },
+        "age": {
+          "abn_registered": "2024-06-18",
+          "asic_registered": null,
+          "years_operating": null
+        },
+        "size": {
+          "employee_count": null,
+          "employee_source": null,
+          "review_count": null,
+          "revenue_est_aud": null,
+          "revenue_confidence": null,
+          "ebitda_est_aud": null,
+          "ebitda_confidence": null
+        },
+        "ownership": {
+          "structure_guess": null,
+          "pe_vc_backed": null,
+          "listed_entity": null,
+          "institutional_on_register": null
+        },
+        "business_model": "UNKNOWN",
+        "moat_signals": {
+          "ip": null,
+          "ip_count": null,
+          "ip_types": [],
+          "gov_contracts": false,
+          "gov_contract_value_aud": null,
+          "gov_contract_count": null,
+          "gov_contract_agencies": [],
+          "regulatory_accreditation": false,
+          "physical_ops": false,
+          "hard_assets": false,
+          "recurring_revenue_hint": false,
+          "award_finalist": null,
+          "nata_accreditation": true,
+          "nata_site_count": 1,
+          "nata_service_types": [
+            "water"
+          ],
+          "nata_accreditation_numbers": [
+            "21072"
+          ],
+          "nata_states": [
+            "NSW"
+          ],
+          "nata_multistate": false
+        },
+        "award_signals": [],
+        "contacts_min": {},
+        "website_text_raw": null,
+        "deferred_assessment": {},
+        "provenance": [
+          {
+            "field": "nata_accreditation",
+            "source": "nata",
+            "locator": "Accreditation #21072",
+            "fetched_at": null,
+            "confidence": 0.95
+          },
+          {
+            "field": "abn",
+            "source": "abn_lookup_api",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.825
+          },
+          {
+            "field": "legal_name",
+            "source": "abn_bulk_extract",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.95
+          },
+          {
+            "field": "sector",
+            "source": "signal_extractor",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.5
+          },
+          {
+            "field": "business_model",
+            "source": "signal_extractor",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.5
+          }
+        ],
+        "screen": {
+          "status": "survivor",
+          "score": null,
+          "flags": [],
+          "matched": [],
+          "missed": []
+        },
+        "flags": [
+          "abn_match_uncertain",
+          "ipgod_checked_no_ip",
+          "austender_checked_no_contracts",
+          "unverified:sector:from_category_only",
+          "unverified:years_operating",
+          "unverified:ebitda_aud:no_employee_count"
+        ],
+        "resolution_confidence": 0.825
+      }
+    }
+  ],
+  "shortlist": [
+    {
+      "record": {
+        "entity_id": "nata:j & j pipe testing",
+        "abn": "87091045760",
+        "acn": "091045760",
+        "legal_name": "J & J PIPE TESTING PTY. LTD.",
+        "trading_names": [],
+        "country": "Australia",
+        "location": {
+          "state": "NSW",
+          "postcode": "2567",
+          "suburb": null,
+          "lat": null,
+          "lng": null,
+          "km_to_capital": null
+        },
+        "sector": {
+          "anzsic": [
+            "3320"
+          ],
+          "anzsic_confidence": 0.75,
+          "category_text": [
+            "water"
+          ],
+          "keyword_hits": [
+            "water"
+          ],
+          "keyword_density": 0.5,
+          "exclude_hits": []
+        },
+        "age": {
+          "abn_registered": null,
+          "asic_registered": "1999-12-24",
+          "years_operating": null
+        },
+        "size": {
+          "employee_count": null,
+          "employee_source": null,
+          "review_count": null,
+          "revenue_est_aud": null,
+          "revenue_confidence": null,
+          "ebitda_est_aud": null,
+          "ebitda_confidence": null
+        },
+        "ownership": {
+          "structure_guess": null,
+          "pe_vc_backed": null,
+          "listed_entity": null,
+          "institutional_on_register": null
+        },
+        "business_model": "B2B",
+        "moat_signals": {
+          "ip": null,
+          "ip_count": null,
+          "ip_types": [],
+          "gov_contracts": false,
+          "gov_contract_value_aud": null,
+          "gov_contract_count": null,
+          "gov_contract_agencies": [],
+          "regulatory_accreditation": true,
+          "physical_ops": true,
+          "hard_assets": true,
+          "recurring_revenue_hint": true,
+          "award_finalist": null,
+          "nata_accreditation": true,
+          "nata_site_count": 1,
+          "nata_service_types": [
+            "water"
+          ],
+          "nata_accreditation_numbers": [
+            "14400"
+          ],
+          "nata_states": [
+            "NSW"
+          ],
+          "nata_multistate": false
+        },
+        "award_signals": [],
+        "contacts_min": {},
+        "website_text_raw": null,
+        "deferred_assessment": {},
+        "provenance": [
+          {
+            "field": "nata_accreditation",
+            "source": "nata",
+            "locator": "Accreditation #14400",
+            "fetched_at": null,
+            "confidence": 0.95
+          },
+          {
+            "field": "abn",
+            "source": "abn_lookup_api",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.695
+          },
+          {
+            "field": "legal_name",
+            "source": "asic_company_dataset",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.95
+          },
+          {
+            "field": "sector",
+            "source": "signal_extractor",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.5
+          },
+          {
+            "field": "business_model",
+            "source": "signal_extractor",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.5
+          }
+        ],
+        "screen": {
+          "status": "survivor",
+          "score": null,
+          "flags": [],
+          "matched": [],
+          "missed": []
+        },
+        "flags": [
+          "abn_match_uncertain",
+          "ipgod_checked_no_ip",
+          "austender_checked_no_contracts",
+          "unverified:sector:from_category_only",
+          "unverified:years_operating",
+          "unverified:ebitda_aud:no_employee_count"
+        ],
+        "resolution_confidence": 0.6945652173913044
+      },
+      "s_stat": 44.18,
+      "s_evidence": 0.1,
+      "s_final": 0.2992,
+      "judge_fit": 0.35,
+      "judge_rationale": "B2B water testing business in NSW with regulatory accreditation present, but years_operating is unknown (cannot confirm 5+ year requirement) and no confirmation of NATA-specific accreditation or business scale data.",
+      "standout_signals": [
+        "regulatory accreditation",
+        "recurring-revenue hint"
+      ],
+      "deferred_assessment": [
+        "unverified:sector:from_category_only",
+        "unverified:years_operating",
+        "unverified:ebitda_aud:no_employee_count",
+        "verify ownership \u2014 PE/VC backing not checked (no source filled it)",
+        "verify EBITDA / financials (no estimate yet)",
+        "confirm no government-revenue dependency",
+        "confirm ABN match (resolution_confidence=0.69)"
+      ],
+      "judge_unavailable": false
+    },
+    {
+      "record": {
+        "entity_id": "nata:turner family enterprises",
+        "abn": "33889125990",
+        "acn": null,
+        "legal_name": "S.W TURNER & T.L TURNER",
+        "trading_names": [],
+        "country": "Australia",
+        "location": {
+          "state": "NSW",
+          "postcode": "2488",
+          "suburb": null,
+          "lat": null,
+          "lng": null,
+          "km_to_capital": null
+        },
+        "sector": {
+          "anzsic": [],
+          "anzsic_confidence": null,
+          "category_text": [
+            "water"
+          ],
+          "keyword_hits": [
+            "water"
+          ],
+          "keyword_density": 0.5,
+          "exclude_hits": []
+        },
+        "age": {
+          "abn_registered": "2024-06-18",
+          "asic_registered": null,
+          "years_operating": null
+        },
+        "size": {
+          "employee_count": null,
+          "employee_source": null,
+          "review_count": null,
+          "revenue_est_aud": null,
+          "revenue_confidence": null,
+          "ebitda_est_aud": null,
+          "ebitda_confidence": null
+        },
+        "ownership": {
+          "structure_guess": null,
+          "pe_vc_backed": null,
+          "listed_entity": null,
+          "institutional_on_register": null
+        },
+        "business_model": "UNKNOWN",
+        "moat_signals": {
+          "ip": null,
+          "ip_count": null,
+          "ip_types": [],
+          "gov_contracts": false,
+          "gov_contract_value_aud": null,
+          "gov_contract_count": null,
+          "gov_contract_agencies": [],
+          "regulatory_accreditation": false,
+          "physical_ops": false,
+          "hard_assets": false,
+          "recurring_revenue_hint": false,
+          "award_finalist": null,
+          "nata_accreditation": true,
+          "nata_site_count": 1,
+          "nata_service_types": [
+            "water"
+          ],
+          "nata_accreditation_numbers": [
+            "21072"
+          ],
+          "nata_states": [
+            "NSW"
+          ],
+          "nata_multistate": false
+        },
+        "award_signals": [],
+        "contacts_min": {},
+        "website_text_raw": null,
+        "deferred_assessment": {},
+        "provenance": [
+          {
+            "field": "nata_accreditation",
+            "source": "nata",
+            "locator": "Accreditation #21072",
+            "fetched_at": null,
+            "confidence": 0.95
+          },
+          {
+            "field": "abn",
+            "source": "abn_lookup_api",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.825
+          },
+          {
+            "field": "legal_name",
+            "source": "abn_bulk_extract",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.95
+          },
+          {
+            "field": "sector",
+            "source": "signal_extractor",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.5
+          },
+          {
+            "field": "business_model",
+            "source": "signal_extractor",
+            "locator": null,
+            "fetched_at": null,
+            "confidence": 0.5
+          }
+        ],
+        "screen": {
+          "status": "survivor",
+          "score": null,
+          "flags": [],
+          "matched": [],
+          "missed": []
+        },
+        "flags": [
+          "abn_match_uncertain",
+          "ipgod_checked_no_ip",
+          "austender_checked_no_contracts",
+          "unverified:sector:from_category_only",
+          "unverified:years_operating",
+          "unverified:ebitda_aud:no_employee_count"
+        ],
+        "resolution_confidence": 0.825
+      },
+      "s_stat": 27.88,
+      "s_evidence": 0.0,
+      "s_final": 0.149,
+      "judge_fit": 0.15,
+      "judge_rationale": "Company is located in NSW and operates in water sector, but lacks publicly verifiable evidence of NATA accreditation, B2B laboratory operations, minimum five-year operating history, or any operating business signals\u2014appears to be a personal name registration without clear commercial laboratory identity.",
+      "standout_signals": [],
+      "deferred_assessment": [
+        "unverified:sector:from_category_only",
+        "unverified:years_operating",
+        "unverified:ebitda_aud:no_employee_count",
+        "verify ownership \u2014 PE/VC backing not checked (no source filled it)",
+        "verify EBITDA / financials (no estimate yet)",
+        "confirm no government-revenue dependency",
+        "confirm ABN match (resolution_confidence=0.82)"
+      ],
+      "judge_unavailable": false
+    }
+  ]
+}

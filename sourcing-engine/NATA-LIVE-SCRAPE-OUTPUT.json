@@ -1,0 +1,119 @@
+{
+  "executed_at": "2026-07-16T20:55:43.860982+00:00",
+  "source": "nata.com.au via apify/playwright-scraper",
+  "params": {
+    "state": "NSW",
+    "search": "water"
+  },
+  "raw_site_count": 6,
+  "raw_sites": [
+    {
+      "parent_org": "Manly Hydraulics Laboratory",
+      "site_name": "Manly Hydraulics Laboratory",
+      "accreditation_number": "17156",
+      "site_number": "18763",
+      "address": "110 B King Street Manly Vale, NSW 2093 Australia",
+      "#error": false,
+      "#debug": {
+        "requestId": "x6nehLgF8BatqIS",
+        "url": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "loadedUrl": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "method": "GET",
+        "retryCount": 0,
+        "errorMessages": [],
+        "statusCode": 200
+      },
+      "service": "water"
+    },
+    {
+      "parent_org": "Caroma Industries Ltd",
+      "site_name": "Caroma Industries Ltd",
+      "accreditation_number": "5049",
+      "site_number": "5042",
+      "address": "1 Melito Court Prestons, NSW 2170 Australia",
+      "#error": false,
+      "#debug": {
+        "requestId": "x6nehLgF8BatqIS",
+        "url": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "loadedUrl": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "method": "GET",
+        "retryCount": 0,
+        "errorMessages": [],
+        "statusCode": 200
+      },
+      "service": "water"
+    },
+    {
+      "parent_org": "J & J Pipe Testing Pty Ltd",
+      "site_name": "J & J Pipe Testing Pty Ltd",
+      "accreditation_number": "14400",
+      "site_number": "14392",
+      "address": "Unit 6/15 McPherson Road Smeaton Grange, NSW 2567 Australia",
+      "#error": false,
+      "#debug": {
+        "requestId": "x6nehLgF8BatqIS",
+        "url": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "loadedUrl": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "method": "GET",
+        "retryCount": 0,
+        "errorMessages": [],
+        "statusCode": 200
+      },
+      "service": "water"
+    },
+    {
+      "parent_org": "Turner Family Enterprises Pty Ltd",
+      "site_name": "Turner Family Enterprises Pty Ltd",
+      "accreditation_number": "21072",
+      "site_number": "25348",
+      "address": "26 Federation Drive Terranora, NSW 2486 Australia",
+      "#error": false,
+      "#debug": {
+        "requestId": "x6nehLgF8BatqIS",
+        "url": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "loadedUrl": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "method": "GET",
+        "retryCount": 0,
+        "errorMessages": [],
+        "statusCode": 200
+      },
+      "service": "water"
+    },
+    {
+      "parent_org": "Eurofins BioPharma Product Testing Australia Pty Ltd",
+      "site_name": "Eurofins BioPharma Product Testing Australia Pty Ltd",
+      "accreditation_number": "15773",
+      "site_number": "16983",
+      "address": "179 Magowar Road Girraween, NSW 2145 Australia",
+      "#error": false,
+      "#debug": {
+        "requestId": "x6nehLgF8BatqIS",
+        "url": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "loadedUrl": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "method": "GET",
+        "retryCount": 0,
+        "errorMessages": [],
+        "statusCode": 200
+      },
+      "service": "water"
+    },
+    {
+      "parent_org": "BlueScope Steel (AIS) Pty Limited",
+      "site_name": "BlueScope Steel (AIS) Pty Limited",
+      "accreditation_number": "632",
+      "site_number": "625",
+      "address": "Five Islands Road Port Kembla, NSW 2505 Australia",
+      "#error": false,
+      "#debug": {
+        "requestId": "x6nehLgF8BatqIS",
+        "url": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "loadedUrl": "https://nata.com.au/page/1/?post_type=site&s=water&filter=service&state=NSW&status=",
+        "method": "GET",
+        "retryCount": 0,
+        "errorMessages": [],
+        "statusCode": 200
+      },
+      "service": "water"
+    }
+  ]
+}

@@ -36,7 +36,7 @@ class FakePipeline:
     def __init__(self, store):
         self._store = store
 
-    def execute(self, run_id, ruleset):
+    def execute(self, run_id, ruleset, *, cache_key=None):
         record = CompanyRecord(
             entity_id=f"abn:{_ABN}", abn=_ABN, legal_name="PG API Co",
             location=Location(state="QLD"),

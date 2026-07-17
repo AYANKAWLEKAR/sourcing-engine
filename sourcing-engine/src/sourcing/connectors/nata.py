@@ -123,11 +123,12 @@ class NATAConnector(ScrapeConnector):
         return {
             "startUrls": urls,
             "pageFunction": _PAGE_FUNCTION,
-            # apify/playwright-scraper's input schema wants a single string here
-            # (not an array), and only accepts Playwright's own wait states —
-            # "networkidle2" is a Puppeteer-ism the actor rejects. Confirmed live:
-            # allowed values are "networkidle" | "load" | "domcontentloaded".
-            "waitUntil": "networkidle",
+            # NATA keeps background requests open after rendering. Waiting for
+            # ``networkidle`` makes Playwright time out, retries the request, and
+            # turns a small tile into a multi-minute scrape. The page function
+            # below waits for the rendered body and pauses before extraction, so
+            # ``domcontentloaded`` is both sufficient and materially faster.
+            "waitUntil": "domcontentloaded",
             "proxyConfiguration": {"useApifyProxy": True},
             # carry the search term through so normalize can seed service types
             "_search": search,
