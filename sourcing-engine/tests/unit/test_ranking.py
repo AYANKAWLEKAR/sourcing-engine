@@ -167,6 +167,27 @@ def test_evidence_gov_value_scales_and_saturates():
     assert s_gov(presence) == pytest.approx(0.4, abs=0.001)
 
 
+def test_evidence_grants_are_distinct_and_rewarded_with_recency():
+    from datetime import date
+
+    from sourcing.rank.score import s_gov, s_gov_investment
+
+    grants = _co("GrantCo")
+    grants.moat_signals.gov_investment = True
+    grants.moat_signals.gov_grants_total_aud = 5_000_000
+    grants.moat_signals.gov_grants_most_recent = date.today()
+    assert s_gov_investment(grants) == pytest.approx(1.0, abs=0.001)
+    assert s_gov(grants) == pytest.approx(1.0, abs=0.001)
+
+    both = _co("Both")
+    both.moat_signals.gov_contracts = True
+    both.moat_signals.gov_contract_value_aud = 50_000
+    both.moat_signals.gov_investment = True
+    both.moat_signals.gov_grants_total_aud = 50_000
+    both.moat_signals.gov_grants_most_recent = date.today()
+    assert s_gov(both) > s_gov(_co("ContractOnly"))
+
+
 def test_evidence_award_tiers():
     from sourcing.models.company import AwardSignal
     from sourcing.rank.score import s_award
@@ -324,6 +345,18 @@ def test_standout_signals_from_gov_contracts():
     assert any("1,750,000" in s for s in sigs)
     assert any("agencies" in s for s in sigs)
     assert "regulatory accreditation" in sigs
+
+
+def test_judge_summary_and_chips_keep_grants_distinct():
+    from sourcing.rank.judge import standout_signals, summarize
+
+    r = _co("GrantCo")
+    r.moat_signals.gov_investment = True
+    r.moat_signals.gov_grants_total_aud = 1_250_000
+    r.moat_signals.gov_grants_count = 2
+    r.moat_signals.gov_grant_programs = ["Modern Manufacturing"]
+    assert "gov_grants" in summarize(r)
+    assert "$1,250,000 Commonwealth grants" in standout_signals(r)
 
 
 def test_score_no_geo_or_model_constraint_is_neutral():

@@ -5,6 +5,8 @@ downstream interfaces are stable.
 """
 from __future__ import annotations
 
+from datetime import date
+
 from pydantic import BaseModel, Field
 
 
@@ -57,6 +59,14 @@ class MoatSignals(BaseModel):
     gov_contract_value_aud: int | None = None
     gov_contract_count: int | None = None            # number of AusTender releases
     gov_contract_agencies: list[str] = Field(default_factory=list)  # for concentration check
+    # Commonwealth grant awards are government investment, not procurement
+    # revenue, so they deliberately remain separate from the AusTender fields.
+    gov_investment: bool = False
+    gov_grants_total_aud: int | None = None
+    gov_grants_count: int | None = None
+    gov_grant_programs: list[str] = Field(default_factory=list)
+    gov_granting_agencies: list[str] = Field(default_factory=list)
+    gov_grants_most_recent: date | None = None
     regulatory_accreditation: bool | None = None
     physical_ops: bool | None = None
     hard_assets: bool | None = None                  # signal extractor

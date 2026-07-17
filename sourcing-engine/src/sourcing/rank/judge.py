@@ -111,6 +111,12 @@ def summarize(record: CompanyRecord) -> str:
         )
     if m.gov_contracts and m.gov_contract_value_aud:
         lines.append(f"gov_contracts: ${m.gov_contract_value_aud:,} across {m.gov_contract_count or 0} releases")
+    if m.gov_investment:
+        programs = ", ".join(m.gov_grant_programs[:3]) or "program unspecified"
+        lines.append(
+            f"gov_grants: ${m.gov_grants_total_aud or 0:,} across "
+            f"{m.gov_grants_count or 0} awards; programs: {programs}"
+        )
     if m.regulatory_accreditation:
         lines.append("regulatory_accreditation: yes")
     if m.ip:
@@ -128,6 +134,11 @@ def standout_signals(record: CompanyRecord) -> list[str]:
         out.append(f"${m.gov_contract_value_aud:,} gov contracts")
     if m.gov_contract_agencies:
         out.append(f"{len(m.gov_contract_agencies)} gov agencies")
+    if m.gov_investment:
+        if m.gov_grants_total_aud:
+            out.append(f"${m.gov_grants_total_aud:,} Commonwealth grants")
+        else:
+            out.append("Commonwealth grant recipient")
     if m.regulatory_accreditation:
         out.append("regulatory accreditation")
     if m.ip:

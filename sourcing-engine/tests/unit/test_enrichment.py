@@ -195,6 +195,17 @@ class FakeASX:
         return rec
 
 
+class FakeGrantConnect:
+    def __init__(self):
+        self.seen = []
+
+    def enrich_record(self, rec):
+        self.seen.append(rec.abn)
+        rec.moat_signals.gov_investment = True
+        rec.moat_signals.gov_grants_total_aud = 500_000
+        return rec
+
+
 class RaisingConnector:
     def enrich_record(self, rec):
         raise RuntimeError("boom")
@@ -223,6 +234,14 @@ def test_enrichment_node_calls_asx_and_ipgod():
     assert ipgod.seen == [rec.abn]
     assert rec.ownership.listed_entity is True
     assert rec.moat_signals.ip is True
+
+
+def test_enrichment_node_calls_grantconnect_after_abn_resolution():
+    grants = FakeGrantConnect()
+    rec = _rec()
+    _node(grantconnect=grants).enrich_pool([rec], _BUYBOX)
+    assert grants.seen == [rec.abn]
+    assert rec.moat_signals.gov_investment is True
 
 
 def test_enrichment_node_defaults_skip_asx_and_ipgod():

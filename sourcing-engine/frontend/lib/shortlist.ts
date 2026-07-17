@@ -15,6 +15,7 @@ export interface FilterPreset {
 
 const ebitda = (rc: RankedCompany) => rc.record.size?.ebitda_est_aud ?? null;
 const govValue = (rc: RankedCompany) => rc.record.moat_signals?.gov_contract_value_aud ?? null;
+const grantValue = (rc: RankedCompany) => rc.record.moat_signals?.gov_grants_total_aud ?? null;
 
 export const FILTER_PRESETS: FilterPreset[] = [
   {
@@ -35,6 +36,13 @@ export const FILTER_PRESETS: FilterPreset[] = [
     hint: "Has AusTender / government revenue",
     predicate: (rc) => Boolean(rc.record.moat_signals?.gov_contracts),
     sortKey: (rc) => govValue(rc) ?? 0,
+  },
+  {
+    id: "grants",
+    label: "Gov grants",
+    hint: "Has Commonwealth grant-investment evidence",
+    predicate: (rc) => Boolean(rc.record.moat_signals?.gov_investment),
+    sortKey: (rc) => grantValue(rc) ?? 0,
   },
   {
     id: "awards",

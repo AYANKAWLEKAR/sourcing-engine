@@ -220,6 +220,30 @@ sources:
       UNSPSC categories, used to detect recurring government revenue and contract
       moats for AI-disruption resilience.
 
+  - source_id: grantconnect_awards
+    connector_type: bulk
+    fields_provided:
+      - moat_signals.gov_investment
+      - moat_signals.gov_grants_total_aud
+      - moat_signals.gov_grants_count
+      - moat_signals.gov_grant_programs
+      - moat_signals.gov_granting_agencies
+      - moat_signals.gov_grants_most_recent
+    sectors_covered: [all]
+    geo_granularity: national
+    join_key: abn
+    cost_tier: free
+    freshness: monthly
+    reliability: structured_high
+    enabled: true
+    gate: full_pool
+    connector_built: true
+    connector_ref: sourcing.connectors.grantconnect.GrantConnectBulkConnector
+    capability_doc: >
+      GrantConnect Commonwealth grant awards. Direct recipient-ABN joins provide
+      government-investment evidence, including grant value, program, agency and
+      latest award date. Enrichment-only; never used to discover candidates.
+
   - source_id: abs_cabee
     connector_type: bulk
     fields_provided: [market_fragmentation]

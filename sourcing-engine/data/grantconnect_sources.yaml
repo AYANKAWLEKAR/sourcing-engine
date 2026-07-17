@@ -1,0 +1,18 @@
+# Official Commonwealth grant-award datasets.  Resource URLs are deliberately
+# not stored here: GrantConnect publishers can rotate them, so the connector
+# resolves the current CSV from CKAN at refresh time.
+sources:
+  - source_dataset: f4bcc061-8973-48cd-bc1e-44cbaf5b90d0
+    granting_agency: Department of Industry, Science and Resources
+    # data.gov.au currently points this "CSV" resource at a protected
+    # GrantConnect help page, not a downloadable file. Stage an authorised CSV
+    # locally by adding `file: path/to/awards.csv` before enabling the connector.
+    access: manual
+    column_aliases:
+      recipient_name: [Recipient Name, Recipient, Recipient Legal Name]
+      recipient_abn: [Recipient ABN, Recipient ABN Number, ABN]
+      program_name: [Grant Program, Program Name, Grant Opportunity, Funding Program]
+      award_value_aud: [Grant Award Value, Grant Amount, Grant Value, Value]
+      award_date: [Grant Award Date, Agreement Start Date, Date of Effect, Start Date]
+      recipient_state: [Recipient State, State, State/Territory]
+      purpose_description: [Grant Purpose, Purpose, Description]

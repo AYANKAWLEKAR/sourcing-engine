@@ -13,6 +13,7 @@ blend in ``rank.py`` weights alongside S_stat and the judge's fit.
 from __future__ import annotations
 
 import math
+from datetime import date
 from typing import TYPE_CHECKING
 
 from ..rag.embeddings import get_embedding_provider
@@ -104,8 +105,11 @@ def statistical_fit(record: CompanyRecord, buybox: BuyBox, embedder=None) -> flo
 # down-weighted by their own confidence so proxy estimates can't over-reward.
 # ---------------------------------------------------------------------------
 
-_GOV_VALUE_CAP = 5_000_000          # AUD at which the gov-contract term saturates to 1.0
-_GOV_PRESENCE_FLOOR = 0.4           # credit for gov_contracts=True with unknown value
+_GOV_VALUE_CAP = 5_000_000          # AUD at which a government-evidence term saturates
+_GOV_PRESENCE_FLOOR = 0.4           # credit for an authoritative presence-only record
+_GRANT_RECENCY_FLOOR = 0.4          # historic grants remain evidence, but are weaker
+_GRANT_RECENCY_FULL_YEARS = 3
+_GRANT_RECENCY_FADE_YEARS = 10
 
 _EVIDENCE_WEIGHTS = {
     "gov": 0.30,
@@ -116,16 +120,46 @@ _EVIDENCE_WEIGHTS = {
 }
 
 
-def s_gov(record: CompanyRecord) -> float:
-    """Government-contract strength: log-scaled dollar value, or a floor if only presence is known."""
-    m = record.moat_signals
-    value = m.gov_contract_value_aud
+def _government_value_signal(value: int | None, present: bool) -> float:
+    """Log-scaled government evidence, with a conservative presence-only floor."""
     if value and value > 0:
         scaled = math.log10(1 + value) / math.log10(1 + _GOV_VALUE_CAP)
         return max(_GOV_PRESENCE_FLOOR, min(1.0, scaled))
-    if m.gov_contracts:
-        return _GOV_PRESENCE_FLOOR
-    return 0.0
+    return _GOV_PRESENCE_FLOOR if present else 0.0
+
+
+def s_gov_contracts(record: CompanyRecord) -> float:
+    """Procurement strength: contract value, or a floor if only presence is known."""
+    m = record.moat_signals
+    return _government_value_signal(m.gov_contract_value_aud, m.gov_contracts)
+
+
+def s_gov_investment(record: CompanyRecord) -> float:
+    """Grant-investment strength, discounted gently as the latest award ages."""
+    m = record.moat_signals
+    base = _government_value_signal(m.gov_grants_total_aud, m.gov_investment)
+    if not base or m.gov_grants_most_recent is None:
+        return base
+    years = max(0.0, (date.today() - m.gov_grants_most_recent).days / 365.25)
+    if years <= _GRANT_RECENCY_FULL_YEARS:
+        return base
+    if years >= _GRANT_RECENCY_FADE_YEARS:
+        return base * _GRANT_RECENCY_FLOOR
+    progress = (years - _GRANT_RECENCY_FULL_YEARS) / (
+        _GRANT_RECENCY_FADE_YEARS - _GRANT_RECENCY_FULL_YEARS
+    )
+    return base * (1.0 - progress * (1.0 - _GRANT_RECENCY_FLOOR))
+
+
+def s_gov(record: CompanyRecord) -> float:
+    """Combine distinct contract and grant evidence without double-counting.
+
+    A probabilistic union preserves either authoritative signal and rewards the
+    unusual profile that has both government procurement and investment.
+    """
+    contracts = s_gov_contracts(record)
+    grants = s_gov_investment(record)
+    return 1.0 - (1.0 - contracts) * (1.0 - grants)
 
 
 def s_award(record: CompanyRecord) -> float:

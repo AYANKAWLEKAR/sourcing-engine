@@ -26,6 +26,10 @@ export interface CompanyRecord {
   moat_signals?: {
     gov_contracts?: boolean;
     gov_contract_value_aud?: number | null;
+    gov_investment?: boolean;
+    gov_grants_total_aud?: number | null;
+    gov_grants_count?: number | null;
+    gov_grant_programs?: string[];
     award_finalist?: boolean | null;
     regulatory_accreditation?: boolean | null;
     ip?: boolean | null;
