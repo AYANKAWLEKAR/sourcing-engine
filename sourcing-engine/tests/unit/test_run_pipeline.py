@@ -170,7 +170,9 @@ def test_shortlist_gate_applied_and_resolver_closed():
     [
         ("retriever", "planning"),
         ("orchestrator", "acquiring"),
-        ("resolver", "resolving"),
+        # ("resolver", "resolving") is deliberately absent: per-record resolution
+        # is best-effort, so one failing lookup flags that record instead of
+        # failing the run. See test_resolver_failure_on_one_record_does_not_fail_the_run.
         ("enrichment", "enriching"),
         ("ranker", "ranking"),
     ],
@@ -186,8 +188,6 @@ def test_failure_at_each_stage_marks_failed(break_component, expect_stage):
         comp.retriever.retrieve = boom
     elif break_component == "orchestrator":
         comp.orchestrator.fetch_all = boom
-    elif break_component == "resolver":
-        comp.resolver.enrich = boom
     elif break_component == "enrichment":
         comp.enrichment.enrich_pool = boom
     elif break_component == "ranker":
@@ -202,3 +202,35 @@ def test_failure_at_each_stage_marks_failed(break_component, expect_stage):
     run = store.get_run("run_t")
     assert run.status == RunStatus.FAILED
     assert run.error.startswith(f"{expect_stage}:")
+
+
+class HalfBrokenResolver:
+    """Resolves record B but raises on A — mimics a flaky ABN Lookup endpoint."""
+
+    def __init__(self):
+        self.asic = self
+
+    def enrich(self, rec):
+        if rec.legal_name == "A":
+            raise ConnectionError("[Errno 54] Connection reset by peer")
+        rec.abn = "22222222222"
+        return rec
+
+    def close(self):
+        pass
+
+
+def test_resolver_failure_on_one_record_does_not_fail_the_run():
+    # One record's lookup blowing up must not take the whole run down: the run
+    # completes, the bad record is flagged, and the good one still resolves.
+    store = InMemoryRunStore()
+    store.create_run("run_t")
+    pool = [_rec(None, "A"), _rec(None, "B")]
+    comp = _components(pool)
+    comp.resolver = HalfBrokenResolver()
+    RunPipeline(store, components=comp, settings=_Settings()).execute("run_t", load_origo_ruleset())
+
+    run = store.get_run("run_t")
+    assert run.status == RunStatus.COMPLETE
+    assert run.coverage["n_resolved"] == 1
+    assert "unverified:abn:lookup_failed" in pool[0].flags

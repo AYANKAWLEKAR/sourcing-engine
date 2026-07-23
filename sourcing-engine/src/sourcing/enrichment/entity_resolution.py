@@ -102,9 +102,18 @@ class EntityResolver:
         if record.abn:
             return record
 
-        abn, rc, cand = self.resolve(
-            record.legal_name, record.location.postcode, record.location.state
-        )
+        try:
+            abn, rc, cand = self.resolve(
+                record.legal_name, record.location.postcode, record.location.state
+            )
+        except Exception:  # noqa: BLE001 — ABN Lookup is a flaky public endpoint
+            # A transport error on ONE candidate must not abort a whole run: the
+            # record stays unresolved and flagged, exactly as it would if the
+            # register simply returned no match, but distinguishable from it.
+            record.resolution_confidence = 0.0
+            record.flags.append("unresolved_abn")
+            record.flags.append("unverified:abn:lookup_failed")
+            return record
         record.resolution_confidence = rc
         if not abn:
             record.flags.append("unresolved_abn")

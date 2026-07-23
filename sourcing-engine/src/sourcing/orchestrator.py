@@ -64,7 +64,7 @@ _SPINE_SOURCES: frozenset[str] = frozenset({
 # here too: it is a resolver fallback (targeted lookup_abn via EntityResolver),
 # never a discovery sweep — sweeping it would load the whole ~20M-row register.
 _ENRICHMENT_SOURCES: frozenset[str] = frozenset({
-    "austender", "grantconnect_awards", "website_fetch", "ipgod", "asx_listed_list", "abn_bulk_extract",
+    "austender", "website_fetch", "ipgod", "asx_listed_list", "abn_bulk_extract",
 })
 
 _DEFAULT_MAX_PLACES = 50

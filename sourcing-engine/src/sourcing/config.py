@@ -73,13 +73,6 @@ class Settings(BaseSettings):
     # ASX listed-companies CSV; empty -> newest data/ASX_Listed_Companies_*.csv.
     asx_csv_path: str = ""
 
-    # GrantConnect / Commonwealth grant-awards bulk cache. It is opt-in so a
-    # normal run never downloads data unexpectedly; load it once, then enable
-    # the local DuckDB lookup for the enrichment waterfall.
-    grantconnect_enabled: bool = False
-    grantconnect_sources_path: str = "data/grantconnect_sources.yaml"
-    grantconnect_raw_dir: str = "data/grantconnect"
-
     @model_validator(mode="after")
     def _resolve_relative_paths(self) -> Settings:
         if self.asic_csv_path and not Path(self.asic_csv_path).is_absolute():
@@ -88,10 +81,6 @@ class Settings(BaseSettings):
             self.abn_bulk_dir = str(REPO_ROOT / self.abn_bulk_dir)
         if self.asx_csv_path and not Path(self.asx_csv_path).is_absolute():
             self.asx_csv_path = str(REPO_ROOT / self.asx_csv_path)
-        if self.grantconnect_sources_path and not Path(self.grantconnect_sources_path).is_absolute():
-            self.grantconnect_sources_path = str(REPO_ROOT / self.grantconnect_sources_path)
-        if self.grantconnect_raw_dir and not Path(self.grantconnect_raw_dir).is_absolute():
-            self.grantconnect_raw_dir = str(REPO_ROOT / self.grantconnect_raw_dir)
         if self.cache_path and not Path(self.cache_path).is_absolute():
             self.cache_path = str(REPO_ROOT / self.cache_path)
         if self.ipgod_csv_paths:

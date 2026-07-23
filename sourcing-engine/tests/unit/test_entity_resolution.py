@@ -195,3 +195,21 @@ def test_enrich_both_miss_no_crash_no_spurious_provenance():
     assert rec.abn == "11111111111"
     assert bulk.lookups == ["11111111111"]
     assert all(p.source != "abn_bulk_extract" for p in rec.provenance)
+
+
+class ExplodingAPI:
+    """ABN Lookup transport that always fails (public endpoint resets happen)."""
+
+    def fetch(self, params):
+        raise ConnectionError("[Errno 54] Connection reset by peer")
+
+
+def test_enrich_survives_lookup_transport_error():
+    # A flaky ABN Lookup call must degrade this ONE record to unresolved rather
+    # than raising out of enrich() and aborting the surrounding run.
+    r = EntityResolver(api=ExplodingAPI(), asic=FakeASIC({}))
+    out = r.enrich(_record("Brisbane Materials Testing", "4101", "QLD"))
+    assert out.abn is None
+    assert "unresolved_abn" in out.flags
+    assert "unverified:abn:lookup_failed" in out.flags   # distinguishable from a genuine no-match
+    assert out.resolution_confidence == 0.0

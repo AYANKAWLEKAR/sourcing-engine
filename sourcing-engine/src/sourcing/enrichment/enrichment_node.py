@@ -35,7 +35,6 @@ class EnrichmentNode:
         asx: Any = None,
         record_cache: Any = None,
         nata_cache: Any = None,
-        grantconnect: Any = None,
     ):
         # Lazy defaults so importing needs no credentials; callers inject fakes in tests.
         if austender is None:
@@ -50,7 +49,6 @@ class EnrichmentNode:
         # None → no persistent record cache (external calls always run).
         self.record_cache = record_cache
         self.nata_cache = nata_cache  # None → skip Plan B NATA lookup
-        self.grantconnect = grantconnect  # None → grant bulk cache is not configured
 
     def enrich_pool(
         self,
@@ -163,15 +161,6 @@ class EnrichmentNode:
                         )
                 except Exception:
                     rec.flags.append("unverified:sector:website_fetch_failed")
-
-        # GrantConnect is a local, direct-ABN lookup. It deliberately runs even
-        # after a record-cache hit so a freshly refreshed grant table is visible
-        # immediately rather than being hidden behind the 14-day record cache.
-        if self.grantconnect is not None:
-            try:
-                self.grantconnect.enrich_record(rec)
-            except Exception:
-                rec.flags.append("unverified:gov_investment:grantconnect_lookup_failed")
 
         # Signal extraction always runs (cheap, buy-box-specific; uses cached or
         # freshly fetched website text — no network).

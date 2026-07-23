@@ -48,7 +48,6 @@ class PipelineComponents:
         from ..config import get_settings
         from ..connectors.abn_bulk import ABNBulkExtractConnector
         from ..connectors.asx_listed import ASXListedConnector
-        from ..connectors.grantconnect import GrantConnectBulkConnector
         from ..connectors.ipgod import IPGODConnector
         from ..connectors.website import WebsiteFetchConnector
         from ..enrichment.enrichment_node import EnrichmentNode
@@ -72,7 +71,6 @@ class PipelineComponents:
         abn_bulk = ABNBulkExtractConnector.from_settings() if s.abn_bulk_enabled else None
         ipgod = IPGODConnector.from_settings() if s.ipgod_csv_paths else None
         asx = ASXListedConnector.from_settings_if_available()
-        grantconnect = GrantConnectBulkConnector.from_settings() if s.grantconnect_enabled else None
         # Persistent ABN-keyed enrichment cache (None unless cache_backend=sqlite).
         from ..enrichment.record_cache import CompanyRecordCache
 
@@ -90,7 +88,6 @@ class PipelineComponents:
                 website=WebsiteFetchConnector(cache=get_default_cache()),
                 ipgod=ipgod,
                 asx=asx,
-                grantconnect=grantconnect,
                 record_cache=record_cache,
             ),
             ranker=rank_pool,
@@ -162,7 +159,14 @@ class RunPipeline:
             self._set(run_id, stage)
             for rec in pool:
                 if not rec.abn:
-                    comp.resolver.enrich(rec)
+                    # Resolution is per-record and best-effort: one bad candidate
+                    # (or a flaky ABN Lookup response) leaves that record
+                    # unresolved rather than failing the run.
+                    try:
+                        comp.resolver.enrich(rec)
+                    except Exception:  # noqa: BLE001
+                        rec.flags.append("unresolved_abn")
+                        rec.flags.append("unverified:abn:lookup_failed")
             from ..connectors.dedup import deduplicate_by_abn
 
             pool = deduplicate_by_abn(pool)
@@ -250,12 +254,9 @@ class RunPipeline:
     def _close(comp: PipelineComponents) -> None:
         # EntityResolver holds DuckDB handles via its ASIC connector and (when
         # ABN_BULK_ENABLED) the ABN bulk-extract connector.
-        # Enrichment's GrantConnect connector can hold the shared local DuckDB
-        # connection too, so include it in the best-effort run cleanup.
         connections = [
             getattr(comp.resolver, attr, None) for attr in ("asic", "abn_bulk")
         ]
-        connections.append(getattr(comp.enrichment, "grantconnect", None))
         for conn in connections:
             close = getattr(conn, "close", None)
             if callable(close):
